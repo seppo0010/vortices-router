@@ -193,3 +193,47 @@ func TestGetExternalPortForInternalPort_Stop(t *testing.T) {
 		t.Errorf("expected exactly one attempt, got %d", attempts)
 	}
 }
+
+func TestGetExternalPortForInternalPort_Parity(t *testing.T) {
+	c := Configuration{PortAssignment: []PortAssignment{PortAssignmentRangePreservation, PortAssignmentNoPreservation}, PortPreservationParity: true}
+	port := 10266
+	candidates, stop := c.GetExternalPortForInternalPort(port)
+	if candidate := <-candidates; candidate.Port != 10266 || candidate.Force != false {
+		t.Errorf("expected port candidate to be %d (%v), got %d (%v)", 10266, false, candidate.Port, candidate.Force)
+	}
+	if candidate := <-candidates; candidate.Port != 10268 || candidate.Force != false {
+		t.Errorf("expected port candidate to be %d (%v), got %d (%v)", 10268, false, candidate.Port, candidate.Force)
+	}
+
+	for candidate := range candidates {
+		if candidate.Port < port {
+			if candidate.Port != 1024 || candidate.Force != false {
+				t.Errorf("expected port candidate to be %d (%v), got %d (%v)", 1024, false, candidate.Port, candidate.Force)
+			}
+
+			stop()
+		}
+	}
+}
+
+func TestGetExternalPortForInternalPort_ParityOdd(t *testing.T) {
+	c := Configuration{PortAssignment: []PortAssignment{PortAssignmentRangePreservation, PortAssignmentNoPreservation}, PortPreservationParity: true}
+	port := 10267
+	candidates, stop := c.GetExternalPortForInternalPort(port)
+	if candidate := <-candidates; candidate.Port != 10267 || candidate.Force != false {
+		t.Errorf("expected port candidate to be %d (%v), got %d (%v)", 10267, false, candidate.Port, candidate.Force)
+	}
+	if candidate := <-candidates; candidate.Port != 10269 || candidate.Force != false {
+		t.Errorf("expected port candidate to be %d (%v), got %d (%v)", 10269, false, candidate.Port, candidate.Force)
+	}
+
+	for candidate := range candidates {
+		if candidate.Port < port {
+			if candidate.Port != 1025 || candidate.Force != false {
+				t.Errorf("expected port candidate to be %d (%v), got %d (%v)", 1025, false, candidate.Port, candidate.Force)
+			}
+
+			stop()
+		}
+	}
+}

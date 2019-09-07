@@ -175,8 +175,8 @@ func (c *Configuration) SendPortCandidate(portCandidate PortCandidate, ch chan<-
 	}
 }
 
-func (c *Configuration) SendPortsInRange(min, max int, ch chan<- PortCandidate, triedPorts map[int]bool, stopCh chan bool) bool {
-	for i := min; i <= max; i++ {
+func (c *Configuration) SendPortsInRange(min, max, step int, ch chan<- PortCandidate, triedPorts map[int]bool, stopCh chan bool) bool {
+	for i := min; i <= max; i += step {
 		if tried, _ := triedPorts[i]; tried {
 			continue
 		}
@@ -220,11 +220,25 @@ func (c *Configuration) GetExternalPortForInternalPort(internalPort int) (<-chan
 					min = 1024
 					max = 65535
 				}
-				if !c.SendPortsInRange(internalPort, max, ch, triedPorts, stopCh) || !c.SendPortsInRange(min, internalPort, ch, triedPorts, stopCh) {
+				if c.PortPreservationParity {
+					minCorrection := 0
+					if min%2 != internalPort%2 {
+						minCorrection = 1
+					}
+					if !c.SendPortsInRange(internalPort, max, 2, ch, triedPorts, stopCh) || !c.SendPortsInRange(min+minCorrection, internalPort, 2, ch, triedPorts, stopCh) {
+						return
+					}
+				}
+				if !c.SendPortsInRange(internalPort, max, 1, ch, triedPorts, stopCh) || !c.SendPortsInRange(min, internalPort, 1, ch, triedPorts, stopCh) {
 					return
 				}
 			case PortAssignmentNoPreservation:
-				if !c.SendPortsInRange(1, 65535, ch, triedPorts, stopCh) {
+				if c.PortPreservationParity {
+					if !c.SendPortsInRange(1, 65535, 2, ch, triedPorts, stopCh) {
+						return
+					}
+				}
+				if !c.SendPortsInRange(1, 65535, 1, ch, triedPorts, stopCh) {
 					return
 				}
 			}
