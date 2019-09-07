@@ -160,3 +160,75 @@ func DefaultConfiguration(numWAN int) *Configuration {
 		true,
 	)
 }
+
+type PortCandidate struct {
+	Port  int
+	Force bool
+}
+
+func (c *Configuration) SendPortCandidate(portCandidate PortCandidate, ch chan<- PortCandidate, stopCh chan bool) bool {
+	select {
+	case ch <- portCandidate:
+		return true
+	case <-stopCh:
+		return false
+	}
+}
+
+func (c *Configuration) SendPortsInRange(min, max int, ch chan<- PortCandidate, triedPorts map[int]bool, stopCh chan bool) bool {
+	for i := min; i <= max; i++ {
+		if tried, _ := triedPorts[i]; tried {
+			continue
+		}
+		triedPorts[i] = true
+		if !c.SendPortCandidate(PortCandidate{Port: i}, ch, stopCh) {
+			return false
+		}
+	}
+	return true
+}
+
+func (c *Configuration) GetExternalPortForInternalPort(internalPort int) (<-chan PortCandidate, func()) {
+	// TODO: PortPreservationParity
+	// TODO: PortContiguity
+	stopCh := make(chan bool)
+	stop := func() {
+		stopCh <- true
+	}
+	ch := make(chan PortCandidate)
+	go func() {
+		defer close(ch)
+		triedPorts := map[int]bool{}
+		for _, portAssignment := range c.PortAssignment {
+			var min, max int
+			switch portAssignment {
+			case PortAssignmentPreservation:
+				triedPorts[internalPort] = true
+				if !c.SendPortCandidate(PortCandidate{Port: internalPort}, ch, stopCh) {
+					return
+				}
+			case PortAssignmentPreservationOverloading:
+				triedPorts[internalPort] = true
+				if !c.SendPortCandidate(PortCandidate{Port: internalPort, Force: true}, ch, stopCh) {
+					return
+				}
+			case PortAssignmentRangePreservation:
+				if internalPort < 1024 {
+					min = 1
+					max = 1023
+				} else {
+					min = 1024
+					max = 65535
+				}
+				if !c.SendPortsInRange(internalPort, max, ch, triedPorts, stopCh) || !c.SendPortsInRange(min, internalPort, ch, triedPorts, stopCh) {
+					return
+				}
+			case PortAssignmentNoPreservation:
+				if !c.SendPortsInRange(1, 65535, ch, triedPorts, stopCh) {
+					return
+				}
+			}
+		}
+	}()
+	return ch, stop
+}
