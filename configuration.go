@@ -1,6 +1,10 @@
 package main
 
-import "time"
+import (
+	"math/rand"
+	"net"
+	"time"
+)
 
 // MappingType establishes what destination headers are considered when choosing to reuse an
 // outgoing endpoint.
@@ -22,16 +26,49 @@ const (
 )
 
 // IPAddressPooling determines how to use different outgoing IP addresses. This is not very common.
-type IPAddressPooling int
+type IPAddressPooling interface {
+	GetIndexForIP(ip net.IP) int
+}
 
-const (
-	// IPAddressPoolingPaired will pair any internal IP address to one external IP address and will
-	// always use the same one.
-	IPAddressPoolingPaired IPAddressPooling = iota
-	// IPAddressPoolingArbitrary makes no guarantee about the external IP address that will be use
-	// for an internal IP address.
-	IPAddressPoolingArbitrary
-)
+// IPAddressPoolingPaired will pair any internal IP address to one external IP address and will
+// always use the same one.
+type IPAddressPoolingPaired struct {
+	max   int
+	last  int
+	pairs map[string]int
+}
+
+func NewIPAddressPoolingPaired(max int) *IPAddressPoolingPaired {
+	return &IPAddressPoolingPaired{
+		last:  -1,
+		max:   max,
+		pairs: map[string]int{},
+	}
+}
+
+func (p *IPAddressPoolingPaired) GetIndexForIP(ip net.IP) int {
+	ipString := ip.String()
+	if val, found := p.pairs[ipString]; found {
+		return val
+	}
+	p.last = (p.last + 1) % p.max
+	p.pairs[ipString] = p.last
+	return p.last
+}
+
+// IPAddressPoolingArbitrary makes no guarantee about the external IP address that will be use
+// for an internal IP address.
+type IPAddressPoolingArbitrary struct {
+	max        int
+	randSource rand.Source
+}
+
+func (p *IPAddressPoolingArbitrary) GetIndexForIP(ip net.IP) int {
+	if p.randSource != nil {
+		return rand.New(p.randSource).Int() % p.max
+	}
+	return rand.Int() % p.max
+}
 
 // PortAssignment sets the rules to handle external port assignment.
 type PortAssignment int
@@ -109,10 +146,10 @@ func NewConfiguration(
 }
 
 // DefaultConfiguration creates a Configuration with the recommended settings.
-func DefaultConfiguration() *Configuration {
+func DefaultConfiguration(numWAN int) *Configuration {
 	return NewConfiguration(
 		MappingTypeEndpointIndependent,
-		IPAddressPoolingPaired,
+		NewIPAddressPoolingPaired(numWAN),
 		[]PortAssignment{PortAssignmentPreservation, PortAssignmentRangePreservation, PortAssignmentNoPreservation},
 		true,
 		true,

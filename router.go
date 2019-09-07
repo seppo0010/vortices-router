@@ -80,6 +80,13 @@ func (r *Router) Run() {
 	panic("unimplemented")
 }
 
+func (r *Router) wanIPsForLANIP(lanIP net.IP) []net.IP {
+	if len(r.WANIPAddresses) == 1 {
+		return r.WANIPAddresses[0]
+	}
+	return r.WANIPAddresses[r.Configuration.IPAddressPooling.GetIndexForIP(lanIP)]
+}
+
 func (r *Router) udpFindNewLAddrForRAddr(raddr *net.UDPAddr) (*net.UDPAddr, error) {
 	panic("unimplemented")
 }
