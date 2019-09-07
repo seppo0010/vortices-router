@@ -67,8 +67,8 @@ const (
 
 // Configuration a router configuration.
 type Configuration struct {
-	MappingType             MappingType
-	IPAddressPooling        IPAddressPooling
+	MappingType      MappingType
+	IPAddressPooling IPAddressPooling
 	// PortAssignment is a list of rules to select a port that will be executed in order if the
 	// previous one were not able to find a port.
 	PortAssignment          []PortAssignment
@@ -123,5 +123,3 @@ func DefaultConfiguration() *Configuration {
 		true,
 	)
 }
-
-
