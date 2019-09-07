@@ -94,6 +94,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, err.Error()+"\n")
 		os.Exit(1)
 	}
-	router := NewRouter(DefaultConfiguration(), lanInterfaces, lanQueues, wanInterfaces, wanQueues)
+	router, err := NewRouter(DefaultConfiguration(), lanInterfaces, lanQueues, wanInterfaces, wanQueues)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, err.Error()+"\n")
+		os.Exit(1)
+	}
 	router.Run()
 }
