@@ -189,7 +189,6 @@ func (c *Configuration) SendPortsInRange(min, max, step int, ch chan<- PortCandi
 }
 
 func (c *Configuration) GetExternalPortForInternalPort(internalPort int) (<-chan PortCandidate, func()) {
-	// TODO: PortPreservationParity
 	// TODO: PortContiguity
 	stopCh := make(chan bool)
 	stop := func() {

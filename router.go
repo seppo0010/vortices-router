@@ -1,10 +1,17 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net"
 )
 
+var NoPorts = errors.New("no available ports")
+
+type Calls interface {
+	Interfaces() ([]net.Interface, error)
+	ListenUDP(network string, laddr *net.UDPAddr) (UDPConn, error)
+}
 type Router struct {
 	Configuration *Configuration
 	LANInterfaces []string
@@ -14,6 +21,7 @@ type Router struct {
 
 	// WANIPAddresses contain a list of IPs on each LAN Interface, these might be IPv4 or IPv6
 	WANIPAddresses [][]net.IP
+	Calls
 }
 
 func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, wanInterfaces []string, wanQueues []int) (*Router, error) {
@@ -24,13 +32,25 @@ func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, wan
 		WANInterfaces: wanInterfaces,
 		LANQueues:     lanQueues,
 		WANQueues:     wanQueues,
+		Calls:         defaultCalls,
 	}
-	router.WANIPAddresses, err = router.findLocalIPAddresses()
+	router.WANIPAddresses, err = router.FindLocalIPAddresses()
 	return router, err
 }
 
-func (r *Router) findLocalIPAddresses() ([][]net.IP, error) {
-	ifaces, err := net.Interfaces()
+func (r *Router) Run() {
+	panic("unimplemented")
+}
+
+func (r *Router) wanIPsForLANIP(lanIP net.IP) []net.IP {
+	if len(r.WANIPAddresses) == 1 {
+		return r.WANIPAddresses[0]
+	}
+	return r.WANIPAddresses[r.Configuration.IPAddressPooling.GetIndexForIP(lanIP)]
+}
+
+func (r *Router) FindLocalIPAddresses() ([][]net.IP, error) {
+	ifaces, err := r.Calls.Interfaces()
 	if err != nil {
 		return nil, err
 	}
@@ -76,17 +96,32 @@ func (r *Router) findLocalIPAddresses() ([][]net.IP, error) {
 	return ipAddresses, nil
 }
 
-func (r *Router) Run() {
-	panic("unimplemented")
-}
-
-func (r *Router) wanIPsForLANIP(lanIP net.IP) []net.IP {
-	if len(r.WANIPAddresses) == 1 {
-		return r.WANIPAddresses[0]
+func (r *Router) udpNewConn(lanIP net.IP, raddr *net.UDPAddr) (UDPConn, error) {
+	wanIPs := r.wanIPsForLANIP(lanIP)
+	portCandidates, stop := r.Configuration.GetExternalPortForInternalPort(raddr.Port)
+	for portCandidate := range portCandidates {
+		for _, wanIP := range wanIPs {
+			// TODO: handle portCandidate.Force
+			udpConn, err := r.Calls.ListenUDP("udp", &net.UDPAddr{
+				IP:   wanIP,
+				Port: portCandidate.Port,
+			})
+			if err == nil {
+				stop()
+				return udpConn, nil
+			}
+		}
 	}
-	return r.WANIPAddresses[r.Configuration.IPAddressPooling.GetIndexForIP(lanIP)]
+	return nil, NoPorts
 }
 
-func (r *Router) udpFindNewLAddrForRAddr(raddr *net.UDPAddr) (*net.UDPAddr, error) {
-	panic("unimplemented")
+type DefaultCalls struct{}
+
+var defaultCalls = &DefaultCalls{}
+
+func (r *DefaultCalls) Interfaces() ([]net.Interface, error) {
+	return net.Interfaces()
+}
+func (r *DefaultCalls) ListenUDP(network string, laddr *net.UDPAddr) (UDPConn, error) {
+	return net.ListenUDP(network, laddr)
 }
