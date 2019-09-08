@@ -96,8 +96,8 @@ func (r *Router) FindLocalIPAddresses() ([][]net.IP, error) {
 	return ipAddresses, nil
 }
 
-func (r *Router) udpNewConn(lanIP net.IP, raddr *net.UDPAddr) (UDPConn, error) {
-	wanIPs := r.wanIPsForLANIP(lanIP)
+func (r *Router) udpNewConn(laddr *net.UDPAddr, raddr *net.UDPAddr) (UDPConn, error) {
+	wanIPs := r.wanIPsForLANIP(laddr.IP)
 	portCandidates, stop := r.Configuration.GetExternalPortForInternalPort(raddr.Port)
 	for portCandidate := range portCandidates {
 		for _, wanIP := range wanIPs {

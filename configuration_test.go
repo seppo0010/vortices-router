@@ -237,3 +237,53 @@ func TestGetExternalPortForInternalPort_ParityOdd(t *testing.T) {
 		}
 	}
 }
+
+func TestMappingEndpointIndependent(t *testing.T) {
+	c := Configuration{MappingType: MappingTypeEndpointIndependent}
+	laddr := &net.UDPAddr{
+		IP:   net.ParseIP("10.0.0.2"),
+		Port: 12345,
+	}
+	raddr := &net.UDPAddr{
+		IP:   net.ParseIP("1.1.1.1"),
+		Port: 1234,
+	}
+	mapping := c.GetMapping(laddr, raddr)
+	expectedMapping := "10.0.0.2:12345"
+	if mapping != expectedMapping {
+		t.Fatalf("expected mapping %s, got %s", expectedMapping, mapping)
+	}
+}
+
+func TestMappingAddressDependent(t *testing.T) {
+	c := Configuration{MappingType: MappingTypeAddressDependent}
+	laddr := &net.UDPAddr{
+		IP:   net.ParseIP("10.0.0.2"),
+		Port: 12345,
+	}
+	raddr := &net.UDPAddr{
+		IP:   net.ParseIP("1.1.1.1"),
+		Port: 1234,
+	}
+	mapping := c.GetMapping(laddr, raddr)
+	expectedMapping := "10.0.0.2:12345->1.1.1.1"
+	if mapping != expectedMapping {
+		t.Fatalf("expected mapping %s, got %s", expectedMapping, mapping)
+	}
+}
+func TestMappingAddressAndPortDependent(t *testing.T) {
+	c := Configuration{MappingType: MappingTypeAddressAndPortDependent}
+	laddr := &net.UDPAddr{
+		IP:   net.ParseIP("10.0.0.2"),
+		Port: 12345,
+	}
+	raddr := &net.UDPAddr{
+		IP:   net.ParseIP("1.1.1.1"),
+		Port: 1234,
+	}
+	mapping := c.GetMapping(laddr, raddr)
+	expectedMapping := "10.0.0.2:12345->1.1.1.1:1234"
+	if mapping != expectedMapping {
+		t.Fatalf("expected mapping %s, got %s", expectedMapping, mapping)
+	}
+}

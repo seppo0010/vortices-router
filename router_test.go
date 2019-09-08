@@ -57,7 +57,10 @@ func TestConnCreation(t *testing.T) {
 		IP:   net.ParseIP("1.1.1.1"),
 		Port: 1234,
 	}
-	connI, err := router.udpNewConn(net.ParseIP("10.0.0.2"), raddr)
+	connI, err := router.udpNewConn(&net.UDPAddr{
+		IP:   net.ParseIP("10.0.0.2"),
+		Port: 12345,
+	}, raddr)
 	if err != nil {
 		t.Fatalf("got unexpected error: %v", err)
 	}

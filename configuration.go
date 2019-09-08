@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math/rand"
 	"net"
 	"time"
@@ -244,4 +245,16 @@ func (c *Configuration) GetExternalPortForInternalPort(internalPort int) (<-chan
 		}
 	}()
 	return ch, stop
+}
+
+func (c *Configuration) GetMapping(laddr *net.UDPAddr, raddr *net.UDPAddr) string {
+	switch c.MappingType {
+	case MappingTypeEndpointIndependent:
+		return laddr.String()
+	case MappingTypeAddressDependent:
+		return fmt.Sprintf("%s->%s", laddr.String(), raddr.IP.String())
+	case MappingTypeAddressAndPortDependent:
+		return fmt.Sprintf("%s->%s", laddr.String(), raddr.String())
+	}
+	panic(fmt.Sprintf("unexpected mapping type: %v", c.MappingType))
 }
