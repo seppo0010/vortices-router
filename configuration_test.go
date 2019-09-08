@@ -287,3 +287,83 @@ func TestMappingAddressAndPortDependent(t *testing.T) {
 		t.Fatalf("expected mapping %s, got %s", expectedMapping, mapping)
 	}
 }
+
+func TestFilteringEndpointIndependent(t *testing.T) {
+	f := FilteringEndpointIndependent{}
+	shouldAccept := f.ShouldAccept(&net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 1234}, []net.Addr{})
+	if !shouldAccept {
+		t.Errorf("expected to accept, got %v", shouldAccept)
+	}
+}
+
+func TestFilteringAddressDependent(t *testing.T) {
+	f := FilteringAddressDependent{}
+	shouldAccept := f.ShouldAccept(&net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 1234}, []net.Addr{})
+	if shouldAccept {
+		t.Errorf("expected to reject, got %v", shouldAccept)
+	}
+
+	shouldAccept = f.ShouldAccept(&net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 1234}, []net.Addr{
+		&net.UDPAddr{IP: net.ParseIP("1.1.1.2"), Port: 1234},
+	})
+	if shouldAccept {
+		t.Errorf("expected to reject, got %v", shouldAccept)
+	}
+
+	shouldAccept = f.ShouldAccept(&net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 1234}, []net.Addr{
+		&net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 1235},
+	})
+	if !shouldAccept {
+		t.Errorf("expected to accept, got %v", shouldAccept)
+	}
+
+	shouldAccept = f.ShouldAccept(&net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 1234}, []net.Addr{
+		&net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 1234},
+	})
+	if !shouldAccept {
+		t.Errorf("expected to accept, got %v", shouldAccept)
+	}
+
+	shouldAccept = f.ShouldAccept(&net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 1234}, []net.Addr{
+		&net.TCPAddr{IP: net.ParseIP("1.1.1.1"), Port: 1234},
+	})
+	if !shouldAccept {
+		t.Errorf("expected to accept, got %v", shouldAccept)
+	}
+}
+
+func TestFilteringAddressAndPortDependent(t *testing.T) {
+	f := FilteringAddressAndPortDependent{}
+	shouldAccept := f.ShouldAccept(&net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 1234}, []net.Addr{})
+	if shouldAccept {
+		t.Errorf("expected to reject, got %v", shouldAccept)
+	}
+
+	shouldAccept = f.ShouldAccept(&net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 1234}, []net.Addr{
+		&net.UDPAddr{IP: net.ParseIP("1.1.1.2"), Port: 1234},
+	})
+	if shouldAccept {
+		t.Errorf("expected to reject, got %v", shouldAccept)
+	}
+
+	shouldAccept = f.ShouldAccept(&net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 1234}, []net.Addr{
+		&net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 1235},
+	})
+	if shouldAccept {
+		t.Errorf("expected to reject, got %v", shouldAccept)
+	}
+
+	shouldAccept = f.ShouldAccept(&net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 1234}, []net.Addr{
+		&net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 1234},
+	})
+	if !shouldAccept {
+		t.Errorf("expected to accept, got %v", shouldAccept)
+	}
+
+	shouldAccept = f.ShouldAccept(&net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 1234}, []net.Addr{
+		&net.TCPAddr{IP: net.ParseIP("1.1.1.1"), Port: 1234},
+	})
+	if shouldAccept {
+		t.Errorf("expected to reject, got %v", shouldAccept)
+	}
+}

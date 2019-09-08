@@ -89,19 +89,63 @@ const (
 )
 
 // Filtering chooses which incoming packets are forwarded.
-type Filtering int
+type Filtering interface {
+	ShouldAccept(raddr net.Addr, knownRaddrs []net.Addr) bool
+}
 
-const (
-	// FilteringEndpointIndependent allows any incoming packet to a registered endpoint to go
-	// through.
-	FilteringEndpointIndependent = iota
-	// FilteringAddressDependent allows any incoming packet to a registered endpoint to go
-	// through if and only if the local endpoint has sent a packet to that host.
-	FilteringAddressDependent
-	// FilteringAddressAndPortDependent allows any incoming packet to a registered endpoint to go
-	// through if and only if the local endpoint has sent a packet to that host and port.
-	FilteringAddressAndPortDependent
-)
+// FilteringEndpointIndependent allows any incoming packet to a registered endpoint to go
+// through.
+type FilteringEndpointIndependent struct{}
+
+func (f FilteringEndpointIndependent) ShouldAccept(raddr net.Addr, knownRaddrs []net.Addr) bool {
+	return true
+}
+
+// FilteringAddressDependent allows any incoming packet to a registered endpoint to go
+// through if and only if the local endpoint has sent a packet to that host.
+type FilteringAddressDependent struct{}
+
+func (f FilteringAddressDependent) ShouldAccept(raddr net.Addr, knownRaddrs []net.Addr) bool {
+	var raddrIP, knownRaddrIP net.IP
+	if raddrTCP, ok := raddr.(*net.TCPAddr); ok {
+		raddrIP = raddrTCP.IP
+	} else if raddrUDP, ok := raddr.(*net.UDPAddr); ok {
+		raddrIP = raddrUDP.IP
+	} else {
+		// TODO: log warning
+		return false
+	}
+
+	for _, knownRaddr := range knownRaddrs {
+		if knownRaddrTCP, ok := knownRaddr.(*net.TCPAddr); ok {
+			knownRaddrIP = knownRaddrTCP.IP
+		} else if knownRaddrUDP, ok := knownRaddr.(*net.UDPAddr); ok {
+			knownRaddrIP = knownRaddrUDP.IP
+		} else {
+			// TODO: log warning
+			continue
+		}
+		if raddrIP.String() == knownRaddrIP.String() {
+			return true
+		}
+	}
+	return false
+}
+
+// FilteringAddressAndPortDependent allows any incoming packet to a registered endpoint to go
+// through if and only if the local endpoint has sent a packet to that host and port.
+type FilteringAddressAndPortDependent struct{}
+
+func (f FilteringAddressAndPortDependent) ShouldAccept(raddr net.Addr, knownRaddrs []net.Addr) bool {
+	raddrNetwork := raddr.Network()
+	raddrString := raddr.String()
+	for _, knownRaddr := range knownRaddrs {
+		if raddrNetwork == knownRaddr.Network() && raddrString == knownRaddr.String() {
+			return true
+		}
+	}
+	return false
+}
 
 // Configuration a router configuration.
 type Configuration struct {
@@ -157,7 +201,7 @@ func DefaultConfiguration(numWAN int) *Configuration {
 		2*time.Minute,
 		true,
 		false,
-		FilteringEndpointIndependent,
+		FilteringEndpointIndependent{},
 		true,
 	)
 }
