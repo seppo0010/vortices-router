@@ -10,6 +10,8 @@ import (
 type UDPConnMock struct {
 	network string
 	laddr   *net.UDPAddr
+
+	written map[string][][]byte
 }
 
 func (u *UDPConnMock) Close() error                                    { return nil }
@@ -32,5 +34,16 @@ func (u *UDPConnMock) Write(b []byte) (int, error)           { return 0, nil }
 func (u *UDPConnMock) WriteMsgUDP(b, oob []byte, addr *net.UDPAddr) (n, oobn int, err error) {
 	return 0, 0, nil
 }
-func (u *UDPConnMock) WriteTo(b []byte, addr net.Addr) (int, error)        { return 0, nil }
-func (u *UDPConnMock) WriteToUDP(b []byte, addr *net.UDPAddr) (int, error) { return 0, nil }
+func (u *UDPConnMock) WriteTo(b []byte, addr net.Addr) (int, error) { return 0, nil }
+
+func (u *UDPConnMock) WriteToUDP(b []byte, addr *net.UDPAddr) (int, error) {
+	if u.written == nil {
+		u.written = map[string][][]byte{}
+	}
+	endpoint := addr.String()
+	if _, found := u.written[endpoint]; !found {
+		u.written[endpoint] = make([][]byte, 0, 1)
+	}
+	u.written[endpoint] = append(u.written[endpoint], b)
+	return len(b), nil
+}

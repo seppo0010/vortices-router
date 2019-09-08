@@ -108,7 +108,7 @@ func (r *Router) FindLocalIPAddresses() ([][]net.IP, error) {
 }
 
 func (r *Router) addUDPConn(laddr, eaddr, raddr *net.UDPAddr, udpConn UDPConn) {
-	mapping := r.Configuration.GetMapping(eaddr, raddr)
+	mapping := r.Configuration.GetMapping(laddr, raddr)
 	if existingConn, found := r.connectionsByMapping[mapping]; found {
 		existingConn.Close()
 	}
@@ -135,7 +135,7 @@ func (r *Router) addUDPConn(laddr, eaddr, raddr *net.UDPAddr, udpConn UDPConn) {
 
 func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr) (UDPConn, error) {
 	wanIPs := r.wanIPsForLANIP(laddr.IP)
-	portCandidates, stop := r.Configuration.GetExternalPortForInternalPort(raddr.Port)
+	portCandidates, stop := r.Configuration.GetExternalPortForInternalPort(laddr.Port)
 	for portCandidate := range portCandidates {
 		for _, wanIP := range wanIPs {
 			// TODO: handle portCandidate.Force
@@ -152,6 +152,47 @@ func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr) (UDPConn, error) {
 		}
 	}
 	return nil, NoPorts
+}
+
+func (r *Router) forwardLANPacket(packet gopacket.Packet) (bool, error) {
+	udpLayer := packet.Layer(layers.LayerTypeUDP)
+	ipv4Layer := packet.Layer(layers.LayerTypeIPv4)
+	ipv6Layer := packet.Layer(layers.LayerTypeIPv6)
+	if udpLayer != nil && (ipv4Layer != nil || ipv6Layer != nil) {
+		udp := udpLayer.(*layers.UDP)
+		laddr := &net.UDPAddr{Port: int(udp.SrcPort)}
+		raddr := &net.UDPAddr{Port: int(udp.DstPort)}
+		if ipv4Layer != nil {
+			ipv4 := ipv4Layer.(*layers.IPv4)
+			laddr.IP = ipv4.SrcIP
+			raddr.IP = ipv4.DstIP
+		} else {
+			ipv6 := ipv6Layer.(*layers.IPv6)
+			laddr.IP = ipv6.SrcIP
+			raddr.IP = ipv6.DstIP
+		}
+		return true, r.forwardLANUDPPacket(laddr, raddr, udp.Payload)
+	}
+	return false, nil
+}
+
+func (r *Router) forwardLANUDPPacket(laddr, raddr *net.UDPAddr, payload []byte) error {
+	conn, found := r.connectionsByMapping[r.Configuration.GetMapping(laddr, raddr)]
+	if !found {
+		var err error
+		conn, err = r.udpNewConn(laddr, raddr)
+		if err != nil {
+			return err
+		}
+	}
+	for pos := 0; pos < len(payload); {
+		n, err := conn.WriteToUDP(payload[pos:], raddr)
+		if err != nil {
+			return err
+		}
+		pos += n
+	}
+	return nil
 }
 
 type DefaultCalls struct{}
