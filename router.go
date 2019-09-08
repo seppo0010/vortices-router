@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"net"
+
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 )
 
 var NoPorts = errors.New("no available ports")
@@ -20,19 +23,27 @@ type Router struct {
 	WANQueues     []int
 
 	// WANIPAddresses contain a list of IPs on each LAN Interface, these might be IPv4 or IPv6
-	WANIPAddresses [][]net.IP
+	WANIPAddresses                [][]net.IP
+	connectionsByMapping          map[string]UDPConn
+	connectionsByInternalEndpoint map[string][]UDPConn
+	connectionsByExternalEndpoint map[string][]UDPConn
+	connectionsByRemoteEndpoint   map[string][]UDPConn
 	Calls
 }
 
 func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, wanInterfaces []string, wanQueues []int) (*Router, error) {
 	var err error
 	router := &Router{
-		Configuration: conf,
-		LANInterfaces: lanInterfaces,
-		WANInterfaces: wanInterfaces,
-		LANQueues:     lanQueues,
-		WANQueues:     wanQueues,
-		Calls:         defaultCalls,
+		Configuration:                 conf,
+		LANInterfaces:                 lanInterfaces,
+		WANInterfaces:                 wanInterfaces,
+		LANQueues:                     lanQueues,
+		WANQueues:                     wanQueues,
+		Calls:                         defaultCalls,
+		connectionsByMapping:          map[string]UDPConn{},
+		connectionsByInternalEndpoint: map[string][]UDPConn{},
+		connectionsByExternalEndpoint: map[string][]UDPConn{},
+		connectionsByRemoteEndpoint:   map[string][]UDPConn{},
 	}
 	router.WANIPAddresses, err = router.FindLocalIPAddresses()
 	return router, err
@@ -96,18 +107,46 @@ func (r *Router) FindLocalIPAddresses() ([][]net.IP, error) {
 	return ipAddresses, nil
 }
 
-func (r *Router) udpNewConn(laddr *net.UDPAddr, raddr *net.UDPAddr) (UDPConn, error) {
+func (r *Router) addUDPConn(laddr, eaddr, raddr *net.UDPAddr, udpConn UDPConn) {
+	mapping := r.Configuration.GetMapping(eaddr, raddr)
+	if existingConn, found := r.connectionsByMapping[mapping]; found {
+		existingConn.Close()
+	}
+	r.connectionsByMapping[mapping] = udpConn
+
+	internalEndpoint := laddr.String()
+	if _, found := r.connectionsByInternalEndpoint[internalEndpoint]; !found {
+		r.connectionsByInternalEndpoint[internalEndpoint] = []UDPConn{}
+	}
+	r.connectionsByInternalEndpoint[internalEndpoint] = append(r.connectionsByInternalEndpoint[internalEndpoint], udpConn)
+
+	externalEndpoint := eaddr.String()
+	if _, found := r.connectionsByExternalEndpoint[externalEndpoint]; !found {
+		r.connectionsByExternalEndpoint[externalEndpoint] = []UDPConn{}
+	}
+	r.connectionsByExternalEndpoint[externalEndpoint] = append(r.connectionsByExternalEndpoint[externalEndpoint], udpConn)
+
+	remoteEndpoint := raddr.String()
+	if _, found := r.connectionsByRemoteEndpoint[remoteEndpoint]; !found {
+		r.connectionsByRemoteEndpoint[remoteEndpoint] = []UDPConn{}
+	}
+	r.connectionsByRemoteEndpoint[remoteEndpoint] = append(r.connectionsByRemoteEndpoint[remoteEndpoint], udpConn)
+}
+
+func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr) (UDPConn, error) {
 	wanIPs := r.wanIPsForLANIP(laddr.IP)
 	portCandidates, stop := r.Configuration.GetExternalPortForInternalPort(raddr.Port)
 	for portCandidate := range portCandidates {
 		for _, wanIP := range wanIPs {
 			// TODO: handle portCandidate.Force
-			udpConn, err := r.Calls.ListenUDP("udp", &net.UDPAddr{
+			eaddr := &net.UDPAddr{
 				IP:   wanIP,
 				Port: portCandidate.Port,
-			})
+			}
+			udpConn, err := r.Calls.ListenUDP("udp", eaddr)
 			if err == nil {
 				stop()
+				r.addUDPConn(laddr, eaddr, raddr, udpConn)
 				return udpConn, nil
 			}
 		}

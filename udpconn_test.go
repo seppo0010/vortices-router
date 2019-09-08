@@ -14,7 +14,7 @@ type UDPConnMock struct {
 
 func (u *UDPConnMock) Close() error                                    { return nil }
 func (u *UDPConnMock) File() (f *os.File, err error)                   { return nil, nil }
-func (u *UDPConnMock) LocalAddr() net.Addr                             { return nil }
+func (u *UDPConnMock) LocalAddr() net.Addr                             { return u.laddr }
 func (u *UDPConnMock) Read(b []byte) (int, error)                      { return 0, nil }
 func (u *UDPConnMock) ReadFrom(b []byte) (int, net.Addr, error)        { return 0, nil, nil }
 func (u *UDPConnMock) ReadFromUDP(b []byte) (int, *net.UDPAddr, error) { return 0, nil, nil }

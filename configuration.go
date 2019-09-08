@@ -247,12 +247,20 @@ func (c *Configuration) GetExternalPortForInternalPort(internalPort int) (<-chan
 	return ch, stop
 }
 
-func (c *Configuration) GetMapping(laddr *net.UDPAddr, raddr *net.UDPAddr) string {
+func (c *Configuration) GetMapping(laddr, raddr net.Addr) string {
 	switch c.MappingType {
 	case MappingTypeEndpointIndependent:
 		return laddr.String()
 	case MappingTypeAddressDependent:
-		return fmt.Sprintf("%s->%s", laddr.String(), raddr.IP.String())
+		var ip net.IP
+		if tcpAddr, ok := raddr.(*net.TCPAddr); ok {
+			ip = tcpAddr.IP
+		} else if udpAddr, ok := raddr.(*net.UDPAddr); ok {
+			ip = udpAddr.IP
+		} else {
+			panic(fmt.Sprintf("unsupported net.Addr for mapping: %T", raddr))
+		}
+		return fmt.Sprintf("%s->%s", laddr.String(), ip.String())
 	case MappingTypeAddressAndPortDependent:
 		return fmt.Sprintf("%s->%s", laddr.String(), raddr.String())
 	}
