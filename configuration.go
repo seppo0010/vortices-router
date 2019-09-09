@@ -233,9 +233,8 @@ func (c *Configuration) SendPortsInRange(min, max, step int, ch chan<- PortCandi
 	return true
 }
 
-func (c *Configuration) GetExternalPortForInternalPort(internalPort int) (<-chan PortCandidate, func()) {
-	// TODO: PortContiguity
-	stopCh := make(chan bool)
+func (c *Configuration) GetExternalPortForInternalPort(internalPort int, contiguityPreference []int) (<-chan PortCandidate, func()) {
+	stopCh := make(chan bool, 1)
 	stop := func() {
 		stopCh <- true
 	}
@@ -243,6 +242,17 @@ func (c *Configuration) GetExternalPortForInternalPort(internalPort int) (<-chan
 	go func() {
 		defer close(ch)
 		triedPorts := map[int]bool{}
+		if c.PortContiguity && contiguityPreference != nil {
+			// If port contiguity is set, should it take presedence over port preservation?
+			// I think so since if port preservation was accomplished for the former port it is
+			// equivalent, but if it was not it might be more important to be consistent.
+			for _, port := range contiguityPreference {
+				triedPorts[port] = true
+				if !c.SendPortCandidate(PortCandidate{Port: port}, ch, stopCh) {
+					return
+				}
+			}
+		}
 		for _, portAssignment := range c.PortAssignment {
 			var min, max int
 			switch portAssignment {

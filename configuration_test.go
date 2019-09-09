@@ -43,7 +43,7 @@ func TestIPAddressPoolingPaired(t *testing.T) {
 func TestGetExternalPortForInternalPort_Preservation(t *testing.T) {
 	c := Configuration{PortAssignment: []PortAssignment{PortAssignmentPreservation}}
 	port := 80
-	candidates, _ := c.GetExternalPortForInternalPort(port)
+	candidates, _ := c.GetExternalPortForInternalPort(port, nil)
 	collectedCandidates := []PortCandidate{}
 	for candidate := range candidates {
 		collectedCandidates = append(collectedCandidates, candidate)
@@ -64,7 +64,7 @@ func TestGetExternalPortForInternalPort_Preservation(t *testing.T) {
 func TestGetExternalPortForInternalPort_PreservationOverloading(t *testing.T) {
 	c := Configuration{PortAssignment: []PortAssignment{PortAssignmentPreservation, PortAssignmentPreservationOverloading}}
 	port := 80
-	candidates, _ := c.GetExternalPortForInternalPort(port)
+	candidates, _ := c.GetExternalPortForInternalPort(port, nil)
 	collectedCandidates := []PortCandidate{}
 	for candidate := range candidates {
 		collectedCandidates = append(collectedCandidates, candidate)
@@ -91,7 +91,7 @@ func TestGetExternalPortForInternalPort_PreservationOverloading(t *testing.T) {
 func TestGetExternalPortForInternalPort_RangePreservation(t *testing.T) {
 	c := Configuration{PortAssignment: []PortAssignment{PortAssignmentRangePreservation}}
 	port := 80
-	candidates, _ := c.GetExternalPortForInternalPort(port)
+	candidates, _ := c.GetExternalPortForInternalPort(port, nil)
 	expectedCandidates := map[int]bool{}
 	for i := 1; i < 1024; i++ {
 		expectedCandidates[i] = true
@@ -113,7 +113,7 @@ func TestGetExternalPortForInternalPort_RangePreservation(t *testing.T) {
 func TestGetExternalPortForInternalPort_RangePreservation2(t *testing.T) {
 	c := Configuration{PortAssignment: []PortAssignment{PortAssignmentRangePreservation}}
 	port := 10266
-	candidates, _ := c.GetExternalPortForInternalPort(port)
+	candidates, _ := c.GetExternalPortForInternalPort(port, nil)
 	expectedCandidates := map[int]bool{}
 	for i := 1024; i <= 65535; i++ {
 		expectedCandidates[i] = true
@@ -135,7 +135,7 @@ func TestGetExternalPortForInternalPort_RangePreservation2(t *testing.T) {
 func TestGetExternalPortForInternalPort_NoRangePreservation(t *testing.T) {
 	c := Configuration{PortAssignment: []PortAssignment{PortAssignmentNoPreservation}}
 	port := 10266
-	candidates, _ := c.GetExternalPortForInternalPort(port)
+	candidates, _ := c.GetExternalPortForInternalPort(port, nil)
 	expectedCandidates := map[int]bool{}
 	for i := 1; i <= 65535; i++ {
 		expectedCandidates[i] = true
@@ -157,7 +157,7 @@ func TestGetExternalPortForInternalPort_NoRangePreservation(t *testing.T) {
 func TestGetExternalPortForInternalPort_RangePreservation_then_NoRangePreservation(t *testing.T) {
 	c := Configuration{PortAssignment: []PortAssignment{PortAssignmentRangePreservation, PortAssignmentNoPreservation}}
 	port := 10266
-	candidates, _ := c.GetExternalPortForInternalPort(port)
+	candidates, _ := c.GetExternalPortForInternalPort(port, nil)
 	expectedCandidates := map[int]bool{}
 	for i := 1024; i <= 65535; i++ {
 		expectedCandidates[i] = true
@@ -183,7 +183,7 @@ func TestGetExternalPortForInternalPort_RangePreservation_then_NoRangePreservati
 
 func TestGetExternalPortForInternalPort_Stop(t *testing.T) {
 	c := Configuration{PortAssignment: []PortAssignment{PortAssignmentRangePreservation, PortAssignmentNoPreservation}}
-	candidates, stop := c.GetExternalPortForInternalPort(1)
+	candidates, stop := c.GetExternalPortForInternalPort(1, nil)
 	attempts := 0
 	for _ = range candidates {
 		attempts++
@@ -197,7 +197,7 @@ func TestGetExternalPortForInternalPort_Stop(t *testing.T) {
 func TestGetExternalPortForInternalPort_Parity(t *testing.T) {
 	c := Configuration{PortAssignment: []PortAssignment{PortAssignmentRangePreservation, PortAssignmentNoPreservation}, PortPreservationParity: true}
 	port := 10266
-	candidates, stop := c.GetExternalPortForInternalPort(port)
+	candidates, stop := c.GetExternalPortForInternalPort(port, nil)
 	if candidate := <-candidates; candidate.Port != 10266 || candidate.Force != false {
 		t.Errorf("expected port candidate to be %d (%v), got %d (%v)", 10266, false, candidate.Port, candidate.Force)
 	}
@@ -219,7 +219,7 @@ func TestGetExternalPortForInternalPort_Parity(t *testing.T) {
 func TestGetExternalPortForInternalPort_ParityOdd(t *testing.T) {
 	c := Configuration{PortAssignment: []PortAssignment{PortAssignmentRangePreservation, PortAssignmentNoPreservation}, PortPreservationParity: true}
 	port := 10267
-	candidates, stop := c.GetExternalPortForInternalPort(port)
+	candidates, stop := c.GetExternalPortForInternalPort(port, nil)
 	if candidate := <-candidates; candidate.Port != 10267 || candidate.Force != false {
 		t.Errorf("expected port candidate to be %d (%v), got %d (%v)", 10267, false, candidate.Port, candidate.Force)
 	}
@@ -366,4 +366,49 @@ func TestFilteringAddressAndPortDependent(t *testing.T) {
 	if shouldAccept {
 		t.Errorf("expected to reject, got %v", shouldAccept)
 	}
+}
+
+func TestGetExternalPortForInternalPort_Contiguity(t *testing.T) {
+	c := Configuration{
+		PortAssignment: []PortAssignment{PortAssignmentPreservation, PortAssignmentNoPreservation},
+		PortContiguity: true,
+	}
+	port := 124
+	candidates, stop := c.GetExternalPortForInternalPort(port, []int{126, 122})
+
+	candidate := <-candidates
+	if candidate.Port != 126 {
+		t.Errorf("expect first candidate to be 126 got %v", candidate.Port)
+	}
+
+	candidate = <-candidates
+	if candidate.Port != 122 {
+		t.Errorf("expect second candidate to be 122 got %v", candidate.Port)
+	}
+
+	candidate = <-candidates
+	if candidate.Port != 124 {
+		t.Errorf("expect third candidate to be 124 got %v", candidate.Port)
+	}
+	stop()
+}
+
+func TestGetExternalPortForInternalPort_NoContiguity(t *testing.T) {
+	c := Configuration{
+		PortAssignment: []PortAssignment{PortAssignmentPreservation, PortAssignmentNoPreservation},
+		PortContiguity: false,
+	}
+	port := 124
+	candidates, stop := c.GetExternalPortForInternalPort(port, []int{126, 122})
+
+	candidate := <-candidates
+	if candidate.Port != 124 {
+		t.Errorf("expect first candidate to be 124 got %v", candidate.Port)
+	}
+
+	candidate = <-candidates
+	if candidate.Port != 1 {
+		t.Errorf("expect second candidate to be 1 got %v", candidate.Port)
+	}
+	stop()
 }
