@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"net"
 	"testing"
 
@@ -252,19 +251,19 @@ func TestForwardWANUDPPacket(t *testing.T) {
 	ipv4Layer := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 
 	if ipv4Layer.SrcIP.String() != "1.1.1.1" {
-		fmt.Errorf("expected source ip to be %v, got %v instead", "1.1.1.1", ipv4Layer.SrcIP.String())
+		t.Errorf("expected source ip to be %v, got %v instead", "1.1.1.1", ipv4Layer.SrcIP.String())
 	}
 	if ipv4Layer.DstIP.String() != "10.0.0.2" {
-		fmt.Errorf("expected source ip to be %v, got %v instead", "10.0.0.2", ipv4Layer.DstIP.String())
+		t.Errorf("expected source ip to be %v, got %v instead", "10.0.0.2", ipv4Layer.DstIP.String())
 	}
 	if udpLayer.SrcPort != 1723 {
-		fmt.Errorf("expected source port to be %v, got %v instead", 1724, udpLayer.SrcPort)
+		t.Errorf("expected source port to be %v, got %v instead", 1724, udpLayer.SrcPort)
 	}
 	if udpLayer.DstPort != 12345 {
-		fmt.Errorf("expected source port to be %v, got %v instead", 12345, udpLayer.DstPort)
+		t.Errorf("expected source port to be %v, got %v instead", 12345, udpLayer.DstPort)
 	}
 	if len(udpLayer.Payload) != 3 || udpLayer.Payload[0] != 1 || udpLayer.Payload[1] != 2 || udpLayer.Payload[2] != 3 {
-		fmt.Errorf("expected payload to be #%v, got %#v instead", []byte{1, 2, 3}, udpLayer.Payload)
+		t.Errorf("expected payload to be #%v, got %#v instead", []byte{1, 2, 3}, udpLayer.Payload)
 	}
 }
 
@@ -316,7 +315,73 @@ func TestConnCreationContiguity(t *testing.T) {
 }
 
 func TestAcceptFilterEndpointIndependent(t *testing.T) {
-	t.Fatal("unimplemented")
+	configuration := DefaultConfiguration(1)
+	myIP := net.ParseIP("10.0.0.1")
+	router := &Router{
+		WANIPAddresses:       [][]net.IP{[]net.IP{myIP}},
+		WANInterfaces:        []string{"lo"},
+		Configuration:        configuration,
+		connectionsByMapping: map[string]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string][]*UDPConnContext{
+			"10.0.0.2:12344": []*UDPConnContext{
+				&UDPConnContext{
+					UDPConn: &UDPConnMock{
+						laddr: &net.UDPAddr{
+							IP:   net.ParseIP("10.0.0.1"),
+							Port: 9876,
+						},
+					},
+				},
+			},
+		},
+		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByRemoteEndpoint:   map[string][]*UDPConnContext{},
+
+		Calls: &MockCalls{
+			bindPorts: map[int]bool{9876: true},
+		},
+	}
+	srcMAC, _ := net.ParseMAC("00:00:5e:00:53:01")
+	dstMAC, _ := net.ParseMAC("10:00:5e:00:53:02")
+	router.processUDPConnOnce(&UDPConnContext{
+		lanInterface: "eth23",
+		interfaceMAC: srcMAC,
+		internalMAC:  dstMAC,
+		internalAddr: &net.UDPAddr{
+			IP:   net.ParseIP("10.0.0.2"),
+			Port: 12344,
+		},
+		UDPConn: &UDPConnMock{
+			toRead: []*UDPConnPacket{
+				&UDPConnPacket{
+					data: []byte{1, 2, 3},
+					addr: &net.UDPAddr{
+						IP:   net.ParseIP("1.1.1.1"),
+						Port: 12345,
+					},
+				},
+			},
+		},
+	})
+	buffer := router.Calls.(*MockCalls).interfaces["eth23"]
+	packet := gopacket.NewPacket(buffer.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
+	udpLayer := packet.Layer(layers.LayerTypeUDP).(*layers.UDP)
+	ipv4Layer := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
+	if ipv4Layer.SrcIP.String() != "1.1.1.1" {
+		t.Errorf("expected source ip to be %v, got %v instead", "1.1.1.1", ipv4Layer.SrcIP.String())
+	}
+	if ipv4Layer.DstIP.String() != "10.0.0.2" {
+		t.Errorf("expected source ip to be %v, got %v instead", "10.0.0.2", ipv4Layer.DstIP.String())
+	}
+	if udpLayer.SrcPort != 12345 {
+		t.Errorf("expected source port to be %v, got %v instead", 12345, udpLayer.SrcPort)
+	}
+	if udpLayer.DstPort != 12344 {
+		t.Errorf("expected source port to be %v, got %v instead", 12344, udpLayer.DstPort)
+	}
+	if len(udpLayer.Payload) != 3 || udpLayer.Payload[0] != 1 || udpLayer.Payload[1] != 2 || udpLayer.Payload[2] != 3 {
+		t.Errorf("expected payload to be #%v, got %#v instead", []byte{1, 2, 3}, udpLayer.Payload)
+	}
 }
 
 func TestAcceptFilterAddressDependent(t *testing.T) {

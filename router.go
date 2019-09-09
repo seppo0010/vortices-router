@@ -177,6 +177,39 @@ func (r *Router) forwardWANUDPPacket(cont *UDPConnContext, raddr *net.UDPAddr, m
 	return handle.WritePacketData(buf.Bytes())
 }
 
+func (r *Router) processUDPConnOnce(cont *UDPConnContext) {
+	buf := make([]byte, 1500)
+	read, raddr, err := cont.UDPConn.ReadFromUDP(buf)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error reading udp conn")
+		return
+	}
+	if raddr == nil {
+		return
+	}
+
+	connections, _ := r.connectionsByExternalEndpoint[cont.UDPConn.LocalAddr().String()]
+	knownRaddrs := []net.Addr{}
+	for _, connection := range connections {
+		for _, addr := range connection.externalAddrs {
+			knownRaddrs = append(knownRaddrs, addr)
+		}
+	}
+	if !r.Configuration.Filtering.ShouldAccept(raddr, knownRaddrs) {
+		log.WithFields(log.Fields{"raddr": raddr.String()}).Info("filtering packet")
+		return
+	}
+	// TODO: stop the goroutine at some point
+	err = r.forwardWANUDPPacket(cont, raddr, buf[:read])
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error forwarding udp packet")
+		return
+	}
+}
 func (r *Router) initUDPConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC net.HardwareAddr, lanInterface string, udpConn UDPConn) *UDPConnContext {
 	cont := &UDPConnContext{
 		UDPConn:       udpConn,
@@ -188,39 +221,8 @@ func (r *Router) initUDPConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMA
 	}
 	go func() {
 		for {
-			buf := make([]byte, 1500)
-			read, raddr, err := udpConn.ReadFromUDP(buf)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error reading udp conn")
-				continue
-			}
-			if raddr == nil {
-				continue
-			}
-
-			connections, _ := r.connectionsByExternalEndpoint[udpConn.LocalAddr().String()]
-			knownRaddrs := []net.Addr{}
-			for _, connection := range connections {
-				for _, addr := range connection.externalAddrs {
-					knownRaddrs = append(knownRaddrs, addr)
-				}
-			}
-			if !r.Configuration.Filtering.ShouldAccept(raddr, knownRaddrs) {
-				log.WithFields(log.Fields{"raddr": raddr.String()}).Info("filtering packet")
-				continue
-			}
-			// TODO: stop the goroutine at some point
-			err = r.forwardWANUDPPacket(cont, raddr, buf[:read])
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error forwarding udp packet")
-				continue
-			}
+			r.processUDPConnOnce(cont)
 		}
-
 	}()
 	return cont
 }
