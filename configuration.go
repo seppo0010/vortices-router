@@ -5,6 +5,8 @@ import (
 	"math/rand"
 	"net"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // MappingType establishes what destination headers are considered when choosing to reuse an
@@ -112,7 +114,9 @@ func (f FilteringAddressDependent) ShouldAccept(raddr net.Addr, knownRaddrs []ne
 	} else if raddrUDP, ok := raddr.(*net.UDPAddr); ok {
 		raddrIP = raddrUDP.IP
 	} else {
-		// TODO: log warning
+		log.WithFields(log.Fields{
+			"type": fmt.Sprintf("%T", raddr),
+		}).Warn("unsupported address type")
 		return false
 	}
 
@@ -122,7 +126,9 @@ func (f FilteringAddressDependent) ShouldAccept(raddr net.Addr, knownRaddrs []ne
 		} else if knownRaddrUDP, ok := knownRaddr.(*net.UDPAddr); ok {
 			knownRaddrIP = knownRaddrUDP.IP
 		} else {
-			// TODO: log warning
+			log.WithFields(log.Fields{
+				"type": fmt.Sprintf("%T", knownRaddr),
+			}).Warn("unsupported address type")
 			continue
 		}
 		if raddrIP.String() == knownRaddrIP.String() {

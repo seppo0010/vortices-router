@@ -3,12 +3,12 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	log "github.com/sirupsen/logrus"
 )
 
 var NoPorts = errors.New("no available ports")
@@ -191,14 +191,18 @@ func (r *Router) initUDPConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMA
 			buf := make([]byte, 1500)
 			read, raddr, err := udpConn.ReadFromUDP(buf)
 			if err != nil {
-				log.Printf("error reading udp conn: %s\n", err.Error())
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error reading udp conn")
 				continue
 			}
 			// TODO: configuration filtering
 			// TODO: stop the goroutine at some point
 			err = r.forwardWANUDPPacket(cont, raddr, buf[:read])
 			if err != nil {
-				log.Printf("error forwarding udp packet: %s\n", err.Error())
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error forwarding udp packet")
 				continue
 			}
 		}
@@ -274,7 +278,7 @@ func (r *Router) forwardLANPacket(queue int, packet gopacket.Packet) (bool, erro
 		}
 	}
 	if lanInterface == "" {
-		log.Printf("unable to find lan interface for queue %d\n", queue)
+		log.WithFields(log.Fields{"queue": queue}).Error("unable to find lan interface for queue")
 		return false, nil
 	}
 	udpLayer := packet.Layer(layers.LayerTypeUDP)
