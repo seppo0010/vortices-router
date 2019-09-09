@@ -28,7 +28,7 @@ type Router struct {
 	// WANIPAddresses contain a list of IPs on each LAN Interface, these might be IPv4 or IPv6
 	WANIPAddresses                [][]net.IP
 	connectionsByMapping          map[string]*UDPConnContext
-	connectionsByInternalEndpoint map[string][]*UDPConnContext
+	connectionsByInternalEndpoint map[string]*UDPConnContext
 	connectionsByExternalEndpoint map[string][]*UDPConnContext
 	connectionsByRemoteEndpoint   map[string][]*UDPConnContext
 	Calls
@@ -53,7 +53,7 @@ func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, wan
 		WANQueues:                     wanQueues,
 		Calls:                         defaultCalls,
 		connectionsByMapping:          map[string]*UDPConnContext{},
-		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string]*UDPConnContext{},
 		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
 		connectionsByRemoteEndpoint:   map[string][]*UDPConnContext{},
 	}
@@ -215,10 +215,7 @@ func (r *Router) addUDPConn(laddr, raddr *net.UDPAddr, udpConn *UDPConnContext) 
 	r.connectionsByMapping[mapping] = udpConn
 
 	internalEndpoint := laddr.String()
-	if _, found := r.connectionsByInternalEndpoint[internalEndpoint]; !found {
-		r.connectionsByInternalEndpoint[internalEndpoint] = []*UDPConnContext{}
-	}
-	r.connectionsByInternalEndpoint[internalEndpoint] = append(r.connectionsByInternalEndpoint[internalEndpoint], udpConn)
+	r.connectionsByInternalEndpoint[internalEndpoint] = udpConn
 
 	externalEndpoint := udpConn.LocalAddr().String()
 	if _, found := r.connectionsByExternalEndpoint[externalEndpoint]; !found {
@@ -235,7 +232,20 @@ func (r *Router) addUDPConn(laddr, raddr *net.UDPAddr, udpConn *UDPConnContext) 
 
 func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC net.HardwareAddr, lanInterface string) (*UDPConnContext, error) {
 	wanIPs := r.wanIPsForLANIP(laddr.IP)
-	portCandidates, stop := r.Configuration.GetExternalPortForInternalPort(laddr.Port)
+	contiguityPreference := make([]int, 0, 2)
+	if cont, found := r.connectionsByInternalEndpoint[(&net.UDPAddr{
+		IP:   laddr.IP,
+		Port: laddr.Port - 1,
+	}).String()]; found {
+		contiguityPreference = append(contiguityPreference, cont.LocalAddr().(*net.UDPAddr).Port+1)
+	}
+	if cont, found := r.connectionsByInternalEndpoint[(&net.UDPAddr{
+		IP:   laddr.IP,
+		Port: laddr.Port + 1,
+	}).String()]; found {
+		contiguityPreference = append(contiguityPreference, cont.LocalAddr().(*net.UDPAddr).Port-1)
+	}
+	portCandidates, stop := r.Configuration.GetExternalPortForInternalPort(laddr.Port, contiguityPreference)
 	for portCandidate := range portCandidates {
 		for _, wanIP := range wanIPs {
 			// TODO: handle portCandidate.Force

@@ -89,7 +89,7 @@ func TestConnCreation(t *testing.T) {
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
-		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string]*UDPConnContext{},
 		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
 		connectionsByRemoteEndpoint:   map[string][]*UDPConnContext{},
 
@@ -123,7 +123,7 @@ func TestConnCreation(t *testing.T) {
 		t.Errorf("expected to find connection in mapping")
 	}
 
-	if conns, found := router.connectionsByInternalEndpoint["10.0.0.2:12345"]; !found || len(conns) != 1 {
+	if _, found := router.connectionsByInternalEndpoint["10.0.0.2:12345"]; !found {
 		t.Errorf("expected to find connection in internal endpoint")
 	}
 
@@ -144,7 +144,7 @@ func TestForwardUDPPacket(t *testing.T) {
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
-		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string]*UDPConnContext{},
 		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
 		connectionsByRemoteEndpoint:   map[string][]*UDPConnContext{},
 
@@ -221,7 +221,7 @@ func TestForwardWANUDPPacket(t *testing.T) {
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
-		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string]*UDPConnContext{},
 		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
 		connectionsByRemoteEndpoint:   map[string][]*UDPConnContext{},
 
@@ -265,5 +265,50 @@ func TestForwardWANUDPPacket(t *testing.T) {
 	}
 	if len(udpLayer.Payload) != 3 || udpLayer.Payload[0] != 1 || udpLayer.Payload[1] != 2 || udpLayer.Payload[2] != 3 {
 		fmt.Errorf("expected payload to be #%v, got %#v instead", []byte{1, 2, 3}, udpLayer.Payload)
+	}
+}
+
+func TestConnCreationContiguity(t *testing.T) {
+	configuration := DefaultConfiguration(1)
+	myIP := net.ParseIP("10.0.0.1")
+	router := &Router{
+		WANIPAddresses:       [][]net.IP{[]net.IP{myIP}},
+		WANInterfaces:        []string{"lo"},
+		Configuration:        configuration,
+		connectionsByMapping: map[string]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string]*UDPConnContext{
+			"10.0.0.2:12344": &UDPConnContext{
+				UDPConn: &UDPConnMock{
+					laddr: &net.UDPAddr{
+						IP:   net.ParseIP("10.0.0.1"),
+						Port: 9876,
+					},
+				},
+			},
+		},
+		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByRemoteEndpoint:   map[string][]*UDPConnContext{},
+
+		Calls: &MockCalls{
+			bindPorts: map[int]bool{9876: true},
+		},
+	}
+
+	laddr := &net.UDPAddr{
+		IP:   net.ParseIP("10.0.0.2"),
+		Port: 12345,
+	}
+	raddr := &net.UDPAddr{
+		IP:   net.ParseIP("1.1.1.1"),
+		Port: 1234,
+	}
+	connI, err := router.udpNewConn(laddr, raddr, net.HardwareAddr{}, net.HardwareAddr{}, "")
+	if err != nil {
+		t.Fatalf("got unexpected error: %v", err)
+	}
+
+	conn := connI.UDPConn.(*UDPConnMock)
+	if conn.laddr.Port != 9877 {
+		t.Errorf("expected connection port to be 9877, got %v", conn.laddr.Port)
 	}
 }
