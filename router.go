@@ -36,11 +36,21 @@ type Router struct {
 
 type UDPConnContext struct {
 	UDPConn
-	internalAddr  *net.UDPAddr
-	externalAddrs []*net.UDPAddr
+	internalAddr  net.Addr
+	externalAddrs []net.Addr
 	internalMAC   net.HardwareAddr
 	interfaceMAC  net.HardwareAddr
 	lanInterface  string
+}
+
+func netAddrIPPortAndProtocol(addr net.Addr) (net.IP, int, string) {
+	if udpAddr, ok := addr.(*net.UDPAddr); ok {
+		return udpAddr.IP, udpAddr.Port, "udp"
+	}
+	if tcpAddr, ok := addr.(*net.TCPAddr); ok {
+		return tcpAddr.IP, tcpAddr.Port, "tcp"
+	}
+	panic(fmt.Sprintf("unexpected net addr type, got %T", addr))
 }
 
 func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, wanInterfaces []string, wanQueues []int) (*Router, error) {
@@ -119,13 +129,14 @@ func (r *Router) FindLocalIPAddresses() ([][]net.IP, error) {
 	return ipAddresses, nil
 }
 
-func (r *Router) forwardWANUDPPacket(cont *UDPConnContext, raddr *net.UDPAddr, message []byte) error {
+func (r *Router) forwardWANUDPPacket(cont *UDPConnContext, raddr net.Addr, message []byte) error {
 	buf := gopacket.NewSerializeBuffer()
 	serializeOpts := gopacket.SerializeOptions{
 		FixLengths:       true,
 		ComputeChecksums: true,
 	}
-	isIPv6 := cont.internalAddr.IP.To4() == nil
+	internalAddrIP, internalAddrPort, _ := netAddrIPPortAndProtocol(cont.internalAddr)
+	isIPv6 := internalAddrIP.To4() == nil
 	ethernetType := layers.EthernetTypeIPv4
 	if isIPv6 {
 		ethernetType = layers.EthernetTypeIPv6
@@ -141,18 +152,19 @@ func (r *Router) forwardWANUDPPacket(cont *UDPConnContext, raddr *net.UDPAddr, m
 		SerializeTo(b gopacket.SerializeBuffer, opts gopacket.SerializeOptions) error
 	}
 
+	raddrIP, raddrPort, _ := netAddrIPPortAndProtocol(raddr)
 	if !isIPv6 {
 		ip = &layers.IPv4{
-			SrcIP:    raddr.IP,
-			DstIP:    cont.internalAddr.IP,
+			SrcIP:    raddrIP,
+			DstIP:    internalAddrIP,
 			Protocol: layers.IPProtocolUDP,
 			Version:  4,
 			TTL:      32,
 		}
 	} else {
 		ip = &layers.IPv6{
-			SrcIP:      raddr.IP,
-			DstIP:      cont.internalAddr.IP,
+			SrcIP:      raddrIP,
+			DstIP:      internalAddrIP,
 			NextHeader: layers.IPProtocolUDP,
 			Version:    6,
 			HopLimit:   32,
@@ -160,8 +172,8 @@ func (r *Router) forwardWANUDPPacket(cont *UDPConnContext, raddr *net.UDPAddr, m
 	}
 
 	udp := &layers.UDP{
-		SrcPort: layers.UDPPort(raddr.Port),
-		DstPort: layers.UDPPort(cont.internalAddr.Port),
+		SrcPort: layers.UDPPort(raddrPort),
+		DstPort: layers.UDPPort(internalAddrPort),
 	}
 	udp.SetNetworkLayerForChecksum(ip)
 	err := gopacket.SerializeLayers(buf, serializeOpts, eth, ip, udp, gopacket.Payload(message))
@@ -210,11 +222,11 @@ func (r *Router) processUDPConnOnce(cont *UDPConnContext) {
 		return
 	}
 }
-func (r *Router) initUDPConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC net.HardwareAddr, lanInterface string, udpConn UDPConn) *UDPConnContext {
+func (r *Router) initUDPConn(laddr, raddr net.Addr, internalMAC, interfaceMAC net.HardwareAddr, lanInterface string, udpConn UDPConn) *UDPConnContext {
 	cont := &UDPConnContext{
 		UDPConn:       udpConn,
 		internalAddr:  laddr,
-		externalAddrs: []*net.UDPAddr{raddr},
+		externalAddrs: []net.Addr{raddr},
 		internalMAC:   internalMAC,
 		interfaceMAC:  interfaceMAC,
 		lanInterface:  lanInterface,
@@ -227,7 +239,7 @@ func (r *Router) initUDPConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMA
 	return cont
 }
 
-func (r *Router) addUDPConn(laddr, raddr *net.UDPAddr, udpConn *UDPConnContext) {
+func (r *Router) addUDPConn(laddr, raddr net.Addr, udpConn *UDPConnContext) {
 	mapping := r.Configuration.GetMapping(laddr, raddr)
 	if existingConn, found := r.connectionsByMapping[mapping]; found {
 		existingConn.Close()
