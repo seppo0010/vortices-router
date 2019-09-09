@@ -240,7 +240,7 @@ func (c *Configuration) SendPortsInRange(min, max, step int, ch chan<- PortCandi
 }
 
 func (c *Configuration) GetExternalPortForInternalPort(internalPort int, contiguityPreference []int) (<-chan PortCandidate, func()) {
-	stopCh := make(chan bool, 1)
+	stopCh := make(chan bool)
 	stop := func() {
 		stopCh <- true
 	}

@@ -89,7 +89,7 @@ func TestConnCreation(t *testing.T) {
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
-		connectionsByInternalEndpoint: map[string]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
 		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
 		connectionsByRemoteEndpoint:   map[string][]*UDPConnContext{},
 
@@ -144,7 +144,7 @@ func TestForwardUDPPacket(t *testing.T) {
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
-		connectionsByInternalEndpoint: map[string]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
 		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
 		connectionsByRemoteEndpoint:   map[string][]*UDPConnContext{},
 
@@ -221,7 +221,7 @@ func TestForwardWANUDPPacket(t *testing.T) {
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
-		connectionsByInternalEndpoint: map[string]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
 		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
 		connectionsByRemoteEndpoint:   map[string][]*UDPConnContext{},
 
@@ -276,12 +276,14 @@ func TestConnCreationContiguity(t *testing.T) {
 		WANInterfaces:        []string{"lo"},
 		Configuration:        configuration,
 		connectionsByMapping: map[string]*UDPConnContext{},
-		connectionsByInternalEndpoint: map[string]*UDPConnContext{
-			"10.0.0.2:12344": &UDPConnContext{
-				UDPConn: &UDPConnMock{
-					laddr: &net.UDPAddr{
-						IP:   net.ParseIP("10.0.0.1"),
-						Port: 9876,
+		connectionsByInternalEndpoint: map[string][]*UDPConnContext{
+			"10.0.0.2:12344": []*UDPConnContext{
+				&UDPConnContext{
+					UDPConn: &UDPConnMock{
+						laddr: &net.UDPAddr{
+							IP:   net.ParseIP("10.0.0.1"),
+							Port: 9876,
+						},
 					},
 				},
 			},
@@ -311,4 +313,18 @@ func TestConnCreationContiguity(t *testing.T) {
 	if conn.laddr.Port != 9877 {
 		t.Errorf("expected connection port to be 9877, got %v", conn.laddr.Port)
 	}
+}
+
+func TestAcceptFilterEndpointIndependent(t *testing.T) {
+	t.Fatal("unimplemented")
+}
+
+func TestAcceptFilterAddressDependent(t *testing.T) {
+	t.Fatal("unimplemented")
+}
+func TestAcceptFilterAddressAndPortDependent(t *testing.T) {
+	t.Fatal("unimplemented")
+}
+func TestAcceptFilterAddressAndPortDependentDifferentProtocol(t *testing.T) {
+	t.Fatal("unimplemented")
 }

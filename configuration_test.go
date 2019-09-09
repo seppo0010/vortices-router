@@ -210,7 +210,6 @@ func TestGetExternalPortForInternalPort_Parity(t *testing.T) {
 			if candidate.Port != 1024 || candidate.Force != false {
 				t.Errorf("expected port candidate to be %d (%v), got %d (%v)", 1024, false, candidate.Port, candidate.Force)
 			}
-
 			stop()
 		}
 	}
