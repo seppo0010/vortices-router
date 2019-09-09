@@ -1,24 +1,64 @@
 package main
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"net"
 	"testing"
+
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 )
 
 type MockCalls struct {
-	bindPorts map[int]bool
+	bindPorts  map[int]bool
+	interfaces map[string]bytes.Buffer
 	DefaultCalls
 }
 
-func (r *MockCalls) ListenUDP(network string, laddr *net.UDPAddr) (UDPConn, error) {
-	if _, found := r.bindPorts[laddr.Port]; found {
+func (m *MockCalls) ListenUDP(network string, laddr *net.UDPAddr) (UDPConn, error) {
+	if _, found := m.bindPorts[laddr.Port]; found {
 		return nil, errors.New("port already in use")
 	}
 	return &UDPConnMock{
 		network: network,
 		laddr:   laddr,
 	}, nil
+}
+
+func (m *MockCalls) OpenInterface(device string) (InterfaceHandle, error) {
+	return &MockInterfaceHandle{
+		device: device,
+		write: func(d []byte) {
+			if m.interfaces == nil {
+				m.interfaces = map[string]bytes.Buffer{}
+			}
+			buffer := m.interfaces[device]
+			buffer.Write(d)
+			m.interfaces[device] = buffer
+		},
+	}, nil
+}
+
+type MockInterfaceHandle struct {
+	device string
+	closed bool
+	write  func([]byte)
+}
+
+func (m *MockInterfaceHandle) Close() {
+	if m.closed {
+		panic("closing interface handle twice")
+	}
+}
+
+func (m *MockInterfaceHandle) WritePacketData(data []byte) error {
+	if m.closed {
+		return errors.New("writing packet data in closed interface handle|MockInterfaceHandle")
+	}
+	m.write(data)
+	return nil
 }
 
 func TestFindIPAddresses(t *testing.T) {
@@ -48,10 +88,10 @@ func TestConnCreation(t *testing.T) {
 		WANIPAddresses:                [][]net.IP{[]net.IP{myIP}},
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
-		connectionsByMapping:          map[string]UDPConn{},
-		connectionsByInternalEndpoint: map[string][]UDPConn{},
-		connectionsByExternalEndpoint: map[string][]UDPConn{},
-		connectionsByRemoteEndpoint:   map[string][]UDPConn{},
+		connectionsByMapping:          map[string]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByRemoteEndpoint:   map[string][]*UDPConnContext{},
 
 		Calls: &MockCalls{
 			bindPorts: map[int]bool{12345: true},
@@ -66,12 +106,12 @@ func TestConnCreation(t *testing.T) {
 		IP:   net.ParseIP("1.1.1.1"),
 		Port: 1234,
 	}
-	connI, err := router.udpNewConn(laddr, raddr)
+	connI, err := router.udpNewConn(laddr, raddr, net.HardwareAddr{}, net.HardwareAddr{}, "")
 	if err != nil {
 		t.Fatalf("got unexpected error: %v", err)
 	}
 
-	conn := connI.(*UDPConnMock)
+	conn := connI.UDPConn.(*UDPConnMock)
 	if conn.laddr.IP.String() != myIP.String() {
 		t.Errorf("expected laddr IP to be %s, got %s", conn.laddr.IP.String(), myIP.String())
 	}
@@ -103,10 +143,10 @@ func TestForwardUDPPacket(t *testing.T) {
 		WANIPAddresses:                [][]net.IP{[]net.IP{myIP}},
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
-		connectionsByMapping:          map[string]UDPConn{},
-		connectionsByInternalEndpoint: map[string][]UDPConn{},
-		connectionsByExternalEndpoint: map[string][]UDPConn{},
-		connectionsByRemoteEndpoint:   map[string][]UDPConn{},
+		connectionsByMapping:          map[string]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByRemoteEndpoint:   map[string][]*UDPConnContext{},
 
 		Calls: &MockCalls{
 			bindPorts: map[int]bool{},
@@ -121,12 +161,12 @@ func TestForwardUDPPacket(t *testing.T) {
 		IP:   net.ParseIP("1.1.1.1"),
 		Port: 1234,
 	}
-	err := router.forwardLANUDPPacket(laddr, raddr, []byte{1, 2, 3})
+	err := router.forwardLANUDPPacket(laddr, raddr, net.HardwareAddr{}, net.HardwareAddr{}, "", []byte{1, 2, 3})
 	if err != nil {
 		t.Fatalf("got unexpected error: %v", err)
 	}
 
-	conn := router.connectionsByMapping["10.0.0.2:12345"].(*UDPConnMock)
+	conn := router.connectionsByMapping["10.0.0.2:12345"].UDPConn.(*UDPConnMock)
 	written := conn.written["1.1.1.1:1234"]
 	if len(written) != 1 {
 		t.Fatalf("expected one packet to be written, got %d", len(written))
@@ -136,13 +176,13 @@ func TestForwardUDPPacket(t *testing.T) {
 		t.Errorf("expected written data to be %v, got %v", []byte{1, 2, 3}, written[0])
 	}
 
-	err = router.forwardLANUDPPacket(laddr, raddr, []byte{4, 5})
+	err = router.forwardLANUDPPacket(laddr, raddr, net.HardwareAddr{}, net.HardwareAddr{}, "", []byte{4, 5})
 	if err != nil {
 		t.Fatalf("got unexpected error: %v", err)
 	}
 
 	// Send a new packet to the same remote
-	conn = router.connectionsByMapping["10.0.0.2:12345"].(*UDPConnMock)
+	conn = router.connectionsByMapping["10.0.0.2:12345"].UDPConn.(*UDPConnMock)
 	written = conn.written["1.1.1.1:1234"]
 	if len(written) != 2 {
 		t.Fatalf("expected two packets to be written, got %d", len(written))
@@ -157,12 +197,12 @@ func TestForwardUDPPacket(t *testing.T) {
 		IP:   net.ParseIP("1.1.1.2"),
 		Port: 1239,
 	}
-	err = router.forwardLANUDPPacket(laddr, raddr, []byte{6, 7})
+	err = router.forwardLANUDPPacket(laddr, raddr, net.HardwareAddr{}, net.HardwareAddr{}, "", []byte{6, 7})
 	if err != nil {
 		t.Fatalf("got unexpected error: %v", err)
 	}
 
-	conn = router.connectionsByMapping["10.0.0.2:12345"].(*UDPConnMock)
+	conn = router.connectionsByMapping["10.0.0.2:12345"].UDPConn.(*UDPConnMock)
 	written = conn.written["1.1.1.2:1239"]
 	if len(written) != 1 {
 		t.Fatalf("expected two packets to be written, got %d", len(written))
@@ -170,5 +210,60 @@ func TestForwardUDPPacket(t *testing.T) {
 
 	if len(written[0]) != 2 || written[0][0] != 6 || written[0][1] != 7 {
 		t.Errorf("expected written data to be %v, got %v", []byte{6, 7}, written[0])
+	}
+}
+
+func TestForwardWANUDPPacket(t *testing.T) {
+	configuration := DefaultConfiguration(1)
+	myIP := net.ParseIP("10.0.0.1")
+	router := &Router{
+		WANIPAddresses:                [][]net.IP{[]net.IP{myIP}},
+		WANInterfaces:                 []string{"lo"},
+		Configuration:                 configuration,
+		connectionsByMapping:          map[string]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByRemoteEndpoint:   map[string][]*UDPConnContext{},
+
+		Calls: &MockCalls{
+			bindPorts: map[int]bool{},
+		},
+	}
+	srcMAC, _ := net.ParseMAC("00:00:5e:00:53:01")
+	dstMAC, _ := net.ParseMAC("10:00:5e:00:53:02")
+	err := router.forwardWANUDPPacket(&UDPConnContext{
+		lanInterface: "eth23",
+		interfaceMAC: srcMAC,
+		internalMAC:  dstMAC,
+		internalAddr: &net.UDPAddr{
+			IP:   net.ParseIP("10.0.0.2"),
+			Port: 12345,
+		},
+	}, &net.UDPAddr{
+		IP:   net.ParseIP("1.1.1.1"),
+		Port: 1723,
+	}, []byte{1, 2, 3})
+	if err != nil {
+		t.Fatalf("error forwading packet: %s", err.Error())
+	}
+	buffer := router.Calls.(*MockCalls).interfaces["eth23"]
+	packet := gopacket.NewPacket(buffer.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
+	udpLayer := packet.Layer(layers.LayerTypeUDP).(*layers.UDP)
+	ipv4Layer := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
+
+	if ipv4Layer.SrcIP.String() != "1.1.1.1" {
+		fmt.Errorf("expected source ip to be %v, got %v instead", "1.1.1.1", ipv4Layer.SrcIP.String())
+	}
+	if ipv4Layer.DstIP.String() != "10.0.0.2" {
+		fmt.Errorf("expected source ip to be %v, got %v instead", "10.0.0.2", ipv4Layer.DstIP.String())
+	}
+	if udpLayer.SrcPort != 1723 {
+		fmt.Errorf("expected source port to be %v, got %v instead", 1724, udpLayer.SrcPort)
+	}
+	if udpLayer.DstPort != 12345 {
+		fmt.Errorf("expected source port to be %v, got %v instead", 12345, udpLayer.DstPort)
+	}
+	if len(udpLayer.Payload) != 3 || udpLayer.Payload[0] != 1 || udpLayer.Payload[1] != 2 || udpLayer.Payload[2] != 3 {
+		fmt.Errorf("expected payload to be #%v, got %#v instead", []byte{1, 2, 3}, udpLayer.Payload)
 	}
 }

@@ -3,10 +3,12 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 )
 
 var NoPorts = errors.New("no available ports")
@@ -14,6 +16,7 @@ var NoPorts = errors.New("no available ports")
 type Calls interface {
 	Interfaces() ([]net.Interface, error)
 	ListenUDP(network string, laddr *net.UDPAddr) (UDPConn, error)
+	OpenInterface(device string) (InterfaceHandle, error)
 }
 type Router struct {
 	Configuration *Configuration
@@ -24,11 +27,20 @@ type Router struct {
 
 	// WANIPAddresses contain a list of IPs on each LAN Interface, these might be IPv4 or IPv6
 	WANIPAddresses                [][]net.IP
-	connectionsByMapping          map[string]UDPConn
-	connectionsByInternalEndpoint map[string][]UDPConn
-	connectionsByExternalEndpoint map[string][]UDPConn
-	connectionsByRemoteEndpoint   map[string][]UDPConn
+	connectionsByMapping          map[string]*UDPConnContext
+	connectionsByInternalEndpoint map[string][]*UDPConnContext
+	connectionsByExternalEndpoint map[string][]*UDPConnContext
+	connectionsByRemoteEndpoint   map[string][]*UDPConnContext
 	Calls
+}
+
+type UDPConnContext struct {
+	UDPConn
+	internalAddr  *net.UDPAddr
+	externalAddrs []*net.UDPAddr
+	internalMAC   net.HardwareAddr
+	interfaceMAC  net.HardwareAddr
+	lanInterface  string
 }
 
 func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, wanInterfaces []string, wanQueues []int) (*Router, error) {
@@ -40,10 +52,10 @@ func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, wan
 		LANQueues:                     lanQueues,
 		WANQueues:                     wanQueues,
 		Calls:                         defaultCalls,
-		connectionsByMapping:          map[string]UDPConn{},
-		connectionsByInternalEndpoint: map[string][]UDPConn{},
-		connectionsByExternalEndpoint: map[string][]UDPConn{},
-		connectionsByRemoteEndpoint:   map[string][]UDPConn{},
+		connectionsByMapping:          map[string]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByRemoteEndpoint:   map[string][]*UDPConnContext{},
 	}
 	router.WANIPAddresses, err = router.FindLocalIPAddresses()
 	return router, err
@@ -107,7 +119,95 @@ func (r *Router) FindLocalIPAddresses() ([][]net.IP, error) {
 	return ipAddresses, nil
 }
 
-func (r *Router) addUDPConn(laddr, eaddr, raddr *net.UDPAddr, udpConn UDPConn) {
+func (r *Router) forwardWANUDPPacket(cont *UDPConnContext, raddr *net.UDPAddr, message []byte) error {
+	buf := gopacket.NewSerializeBuffer()
+	serializeOpts := gopacket.SerializeOptions{
+		FixLengths:       true,
+		ComputeChecksums: true,
+	}
+	isIPv6 := cont.internalAddr.IP.To4() == nil
+	ethernetType := layers.EthernetTypeIPv4
+	if isIPv6 {
+		ethernetType = layers.EthernetTypeIPv6
+	}
+	eth := &layers.Ethernet{
+		SrcMAC:       cont.interfaceMAC,
+		DstMAC:       cont.internalMAC,
+		EthernetType: ethernetType,
+	}
+
+	var ip interface {
+		gopacket.NetworkLayer
+		SerializeTo(b gopacket.SerializeBuffer, opts gopacket.SerializeOptions) error
+	}
+
+	if !isIPv6 {
+		ip = &layers.IPv4{
+			SrcIP:    raddr.IP,
+			DstIP:    cont.internalAddr.IP,
+			Protocol: layers.IPProtocolUDP,
+			Version:  4,
+			TTL:      32,
+		}
+	} else {
+		ip = &layers.IPv6{
+			SrcIP:      raddr.IP,
+			DstIP:      cont.internalAddr.IP,
+			NextHeader: layers.IPProtocolUDP,
+			Version:    6,
+			HopLimit:   32,
+		}
+	}
+
+	udp := &layers.UDP{
+		SrcPort: layers.UDPPort(raddr.Port),
+		DstPort: layers.UDPPort(cont.internalAddr.Port),
+	}
+	udp.SetNetworkLayerForChecksum(ip)
+	err := gopacket.SerializeLayers(buf, serializeOpts, eth, ip, udp, gopacket.Payload(message))
+	if err != nil {
+		return err
+	}
+
+	handle, err := r.Calls.OpenInterface(cont.lanInterface)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer handle.Close()
+	return handle.WritePacketData(buf.Bytes())
+}
+
+func (r *Router) initUDPConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC net.HardwareAddr, lanInterface string, udpConn UDPConn) *UDPConnContext {
+	cont := &UDPConnContext{
+		UDPConn:       udpConn,
+		internalAddr:  laddr,
+		externalAddrs: []*net.UDPAddr{raddr},
+		internalMAC:   internalMAC,
+		interfaceMAC:  interfaceMAC,
+		lanInterface:  lanInterface,
+	}
+	go func() {
+		for {
+			buf := make([]byte, 1500)
+			read, raddr, err := udpConn.ReadFromUDP(buf)
+			if err != nil {
+				log.Printf("error reading udp conn: %s\n", err.Error())
+				continue
+			}
+			// TODO: configuration filtering
+			// TODO: stop the goroutine at some point
+			err = r.forwardWANUDPPacket(cont, raddr, buf[:read])
+			if err != nil {
+				log.Printf("error forwarding udp packet: %s\n", err.Error())
+				continue
+			}
+		}
+
+	}()
+	return cont
+}
+
+func (r *Router) addUDPConn(laddr, raddr *net.UDPAddr, udpConn *UDPConnContext) {
 	mapping := r.Configuration.GetMapping(laddr, raddr)
 	if existingConn, found := r.connectionsByMapping[mapping]; found {
 		existingConn.Close()
@@ -116,24 +216,24 @@ func (r *Router) addUDPConn(laddr, eaddr, raddr *net.UDPAddr, udpConn UDPConn) {
 
 	internalEndpoint := laddr.String()
 	if _, found := r.connectionsByInternalEndpoint[internalEndpoint]; !found {
-		r.connectionsByInternalEndpoint[internalEndpoint] = []UDPConn{}
+		r.connectionsByInternalEndpoint[internalEndpoint] = []*UDPConnContext{}
 	}
 	r.connectionsByInternalEndpoint[internalEndpoint] = append(r.connectionsByInternalEndpoint[internalEndpoint], udpConn)
 
-	externalEndpoint := eaddr.String()
+	externalEndpoint := udpConn.LocalAddr().String()
 	if _, found := r.connectionsByExternalEndpoint[externalEndpoint]; !found {
-		r.connectionsByExternalEndpoint[externalEndpoint] = []UDPConn{}
+		r.connectionsByExternalEndpoint[externalEndpoint] = []*UDPConnContext{}
 	}
 	r.connectionsByExternalEndpoint[externalEndpoint] = append(r.connectionsByExternalEndpoint[externalEndpoint], udpConn)
 
 	remoteEndpoint := raddr.String()
 	if _, found := r.connectionsByRemoteEndpoint[remoteEndpoint]; !found {
-		r.connectionsByRemoteEndpoint[remoteEndpoint] = []UDPConn{}
+		r.connectionsByRemoteEndpoint[remoteEndpoint] = []*UDPConnContext{}
 	}
 	r.connectionsByRemoteEndpoint[remoteEndpoint] = append(r.connectionsByRemoteEndpoint[remoteEndpoint], udpConn)
 }
 
-func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr) (UDPConn, error) {
+func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC net.HardwareAddr, lanInterface string) (*UDPConnContext, error) {
 	wanIPs := r.wanIPsForLANIP(laddr.IP)
 	portCandidates, stop := r.Configuration.GetExternalPortForInternalPort(laddr.Port)
 	for portCandidate := range portCandidates {
@@ -146,22 +246,37 @@ func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr) (UDPConn, error) {
 			udpConn, err := r.Calls.ListenUDP("udp", eaddr)
 			if err == nil {
 				stop()
-				r.addUDPConn(laddr, eaddr, raddr, udpConn)
-				return udpConn, nil
+				connContext := r.initUDPConn(laddr, raddr, internalMAC, interfaceMAC, lanInterface, udpConn)
+				r.addUDPConn(laddr, raddr, connContext)
+				return connContext, nil
 			}
 		}
 	}
 	return nil, NoPorts
 }
 
-func (r *Router) forwardLANPacket(packet gopacket.Packet) (bool, error) {
+func (r *Router) forwardLANPacket(queue int, packet gopacket.Packet) (bool, error) {
+	lanInterface := ""
+	for i, q := range r.LANQueues {
+		if q == queue {
+			lanInterface = r.LANInterfaces[i]
+			break
+		}
+	}
+	if lanInterface == "" {
+		log.Printf("unable to find lan interface for queue %d\n", queue)
+		return false, nil
+	}
 	udpLayer := packet.Layer(layers.LayerTypeUDP)
 	ipv4Layer := packet.Layer(layers.LayerTypeIPv4)
 	ipv6Layer := packet.Layer(layers.LayerTypeIPv6)
-	if udpLayer != nil && (ipv4Layer != nil || ipv6Layer != nil) {
+	ethernetLayer := packet.Layer(layers.LayerTypeEthernet)
+	if udpLayer != nil && (ipv4Layer != nil || ipv6Layer != nil) && ethernetLayer != nil {
 		udp := udpLayer.(*layers.UDP)
 		laddr := &net.UDPAddr{Port: int(udp.SrcPort)}
 		raddr := &net.UDPAddr{Port: int(udp.DstPort)}
+		srcMAC := ethernetLayer.(*layers.Ethernet).SrcMAC
+		dstMAC := ethernetLayer.(*layers.Ethernet).DstMAC
 		if ipv4Layer != nil {
 			ipv4 := ipv4Layer.(*layers.IPv4)
 			laddr.IP = ipv4.SrcIP
@@ -171,16 +286,16 @@ func (r *Router) forwardLANPacket(packet gopacket.Packet) (bool, error) {
 			laddr.IP = ipv6.SrcIP
 			raddr.IP = ipv6.DstIP
 		}
-		return true, r.forwardLANUDPPacket(laddr, raddr, udp.Payload)
+		return true, r.forwardLANUDPPacket(laddr, raddr, srcMAC, dstMAC, lanInterface, udp.Payload)
 	}
 	return false, nil
 }
 
-func (r *Router) forwardLANUDPPacket(laddr, raddr *net.UDPAddr, payload []byte) error {
+func (r *Router) forwardLANUDPPacket(laddr, raddr *net.UDPAddr, srcMAC, dstMAC net.HardwareAddr, lanInterface string, payload []byte) error {
 	conn, found := r.connectionsByMapping[r.Configuration.GetMapping(laddr, raddr)]
 	if !found {
 		var err error
-		conn, err = r.udpNewConn(laddr, raddr)
+		conn, err = r.udpNewConn(laddr, raddr, srcMAC, dstMAC, lanInterface)
 		if err != nil {
 			return err
 		}
@@ -195,6 +310,11 @@ func (r *Router) forwardLANUDPPacket(laddr, raddr *net.UDPAddr, payload []byte) 
 	return nil
 }
 
+type InterfaceHandle interface {
+	Close()
+	WritePacketData(data []byte) (err error)
+}
+
 type DefaultCalls struct{}
 
 var defaultCalls = &DefaultCalls{}
@@ -204,4 +324,8 @@ func (r *DefaultCalls) Interfaces() ([]net.Interface, error) {
 }
 func (r *DefaultCalls) ListenUDP(network string, laddr *net.UDPAddr) (UDPConn, error) {
 	return net.ListenUDP(network, laddr)
+}
+
+func (r *DefaultCalls) OpenInterface(device string) (InterfaceHandle, error) {
+	return pcap.OpenLive(device, 1024, false, pcap.BlockForever)
 }
