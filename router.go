@@ -33,7 +33,6 @@ type Router struct {
 	WANIPAddresses                [][]net.IP
 	connectionsByMapping          map[string]*UDPConnContext
 	connectionsByInternalEndpoint map[string][]*UDPConnContext
-	connectionsByExternalEndpoint map[string][]*UDPConnContext
 	Calls
 }
 
@@ -69,7 +68,6 @@ func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, wan
 		Calls:                         defaultCalls,
 		connectionsByMapping:          map[string]*UDPConnContext{},
 		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
-		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
 	}
 	router.WANIPAddresses, err = router.FindLocalIPAddresses()
 	return router, err
