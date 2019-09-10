@@ -91,7 +91,6 @@ func TestConnCreation(t *testing.T) {
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
 		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
-		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
 
 		Calls: &MockCalls{
 			bindPorts: map[int]bool{12345: true},
@@ -126,10 +125,6 @@ func TestConnCreation(t *testing.T) {
 	if _, found := router.connectionsByInternalEndpoint["10.0.0.2:12345"]; !found {
 		t.Errorf("expected to find connection in internal endpoint")
 	}
-
-	if conns, found := router.connectionsByExternalEndpoint["10.0.0.1:12347"]; !found || len(conns) != 1 {
-		t.Errorf("expected to find connection in internal endpoint")
-	}
 }
 
 func TestForwardUDPPacket(t *testing.T) {
@@ -141,7 +136,6 @@ func TestForwardUDPPacket(t *testing.T) {
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
 		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
-		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
 
 		Calls: &MockCalls{
 			bindPorts: map[int]bool{},
@@ -217,7 +211,6 @@ func TestForwardWANUDPPacket(t *testing.T) {
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
 		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
-		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
 
 		Calls: &MockCalls{
 			bindPorts: map[int]bool{},
@@ -282,7 +275,6 @@ func TestConnCreationContiguity(t *testing.T) {
 				},
 			},
 		},
-		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
 
 		Calls: &MockCalls{
 			bindPorts: map[int]bool{9876: true},
@@ -318,7 +310,6 @@ func testFilter(t *testing.T, configuration *Configuration, forward bool, raddr 
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
 		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
-		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
 
 		Calls: &MockCalls{
 			bindPorts: map[int]bool{9876: true},

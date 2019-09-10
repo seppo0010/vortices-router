@@ -210,12 +210,9 @@ func (r *Router) processUDPConnOnce(cont *UDPConnContext) {
 		return
 	}
 
-	connections, _ := r.connectionsByExternalEndpoint[cont.UDPConn.LocalAddr().String()]
 	knownRaddrs := []net.Addr{}
-	for _, connection := range connections {
-		for _, addr := range connection.externalAddrs {
+		for _, addr := range cont.externalAddrs {
 			knownRaddrs = append(knownRaddrs, addr)
-		}
 	}
 	if !r.Configuration.Filtering.ShouldAccept(raddr, knownRaddrs) {
 		log.WithFields(log.Fields{"raddr": raddr.String()}).Info("filtering packet")
@@ -259,12 +256,6 @@ func (r *Router) addUDPConn(laddr, raddr net.Addr, udpConn *UDPConnContext) {
 		r.connectionsByInternalEndpoint[internalEndpoint] = []*UDPConnContext{}
 	}
 	r.connectionsByInternalEndpoint[internalEndpoint] = append(r.connectionsByInternalEndpoint[internalEndpoint], udpConn)
-
-	externalEndpoint := udpConn.LocalAddr().String()
-	if _, found := r.connectionsByExternalEndpoint[externalEndpoint]; !found {
-		r.connectionsByExternalEndpoint[externalEndpoint] = []*UDPConnContext{}
-	}
-	r.connectionsByExternalEndpoint[externalEndpoint] = append(r.connectionsByExternalEndpoint[externalEndpoint], udpConn)
 }
 
 func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC net.HardwareAddr, lanInterface string) (*UDPConnContext, error) {
