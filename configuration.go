@@ -41,6 +41,7 @@ type IPAddressPoolingPaired struct {
 	pairs map[string]int
 }
 
+// NewIPAddressPoolingPaired creates an IPAddressPoolingPaired with `max` IP addresses
 func NewIPAddressPoolingPaired(max int) *IPAddressPoolingPaired {
 	return &IPAddressPoolingPaired{
 		last:  -1,
@@ -49,6 +50,8 @@ func NewIPAddressPoolingPaired(max int) *IPAddressPoolingPaired {
 	}
 }
 
+// GetIndexForIP gets the WAN IP address index to user for a LAN IP address. The same LAN IP
+// address will always return the same index.
 func (p *IPAddressPoolingPaired) GetIndexForIP(ip net.IP) int {
 	ipString := ip.String()
 	if val, found := p.pairs[ipString]; found {
@@ -66,6 +69,8 @@ type IPAddressPoolingArbitrary struct {
 	randSource rand.Source
 }
 
+// GetIndexForIP gets the WAN IP address index to user for a LAN IP address. The index is always
+// random.
 func (p *IPAddressPoolingArbitrary) GetIndexForIP(ip net.IP) int {
 	if p.randSource != nil {
 		return rand.New(p.randSource).Int() % p.max
@@ -99,6 +104,8 @@ type Filtering interface {
 // through.
 type FilteringEndpointIndependent struct{}
 
+// ShouldAccept whether the incoming raddr should be accepted given that a list of `knownRaddrs`
+// received an outgoing message. In this case it is always accepted.
 func (f FilteringEndpointIndependent) ShouldAccept(raddr net.Addr, knownRaddrs []net.Addr) bool {
 	return true
 }
@@ -107,6 +114,8 @@ func (f FilteringEndpointIndependent) ShouldAccept(raddr net.Addr, knownRaddrs [
 // through if and only if the local endpoint has sent a packet to that host.
 type FilteringAddressDependent struct{}
 
+// ShouldAccept whether the incoming raddr should be accepted given that a list of `knownRaddrs`
+// received an outgoing message. In this case it is only accepted if the remote host was used.
 func (f FilteringAddressDependent) ShouldAccept(raddr net.Addr, knownRaddrs []net.Addr) bool {
 	var raddrIP, knownRaddrIP net.IP
 	if raddrTCP, ok := raddr.(*net.TCPAddr); ok {
@@ -142,6 +151,9 @@ func (f FilteringAddressDependent) ShouldAccept(raddr net.Addr, knownRaddrs []ne
 // through if and only if the local endpoint has sent a packet to that host and port.
 type FilteringAddressAndPortDependent struct{}
 
+// ShouldAccept whether the incoming raddr should be accepted given that a list of `knownRaddrs`
+// received an outgoing message. In this case it is only accepted if the remote host, port and
+// protocol was used.
 func (f FilteringAddressAndPortDependent) ShouldAccept(raddr net.Addr, knownRaddrs []net.Addr) bool {
 	raddrNetwork := raddr.Network()
 	raddrString := raddr.String()
@@ -212,11 +224,18 @@ func DefaultConfiguration(numWAN int) *Configuration {
 	)
 }
 
+// PortCandidate is a port that may be used to connect to a WAN host based on the settings'
+// preferences.
 type PortCandidate struct {
+    // Port is the port number (0-65535)
 	Port  int
+    // Force is whether the candidate should be used replacing any existing connection.
+    // This only happens when overloading is enabled.
 	Force bool
 }
 
+// SendPortCandidate yields a port candidate to the channel if a stop message has not being
+// received.
 func (c *Configuration) SendPortCandidate(portCandidate PortCandidate, ch chan<- PortCandidate, stopCh chan bool) bool {
 	select {
 	case ch <- portCandidate:
@@ -226,6 +245,7 @@ func (c *Configuration) SendPortCandidate(portCandidate PortCandidate, ch chan<-
 	}
 }
 
+// SendPortsInRange sends all the ports from `min` to `max`, using a `step`.
 func (c *Configuration) SendPortsInRange(min, max, step int, ch chan<- PortCandidate, triedPorts map[int]bool, stopCh chan bool) bool {
 	for i := min; i <= max; i += step {
 		if tried, _ := triedPorts[i]; tried {
@@ -239,6 +259,9 @@ func (c *Configuration) SendPortsInRange(min, max, step int, ch chan<- PortCandi
 	return true
 }
 
+// GetExternalPortForInternalPort sends port candidates to use on WAN for an outgoing LAN port based
+// on the configuration preferences. A `stop` function is also provided to indicate that a candidate
+// was chosen and no more are needed.
 func (c *Configuration) GetExternalPortForInternalPort(internalPort int, contiguityPreference []int) (<-chan PortCandidate, func()) {
 	stopCh := make(chan bool)
 	stop := func() {
@@ -307,6 +330,11 @@ func (c *Configuration) GetExternalPortForInternalPort(internalPort int, contigu
 	return ch, stop
 }
 
+// GetMapping returns a key to index a connection based on the configuration. When the same mapping
+// is returned the same external port may be used.
+// For example, a full cone NAT will ignore the `raddr` and use the same port to connect to any
+// external endpoint.
+// An address restricted NAT will produce the same mapping if the remote hostname is the same.
 func (c *Configuration) GetMapping(laddr, raddr net.Addr) string {
 	switch c.MappingType {
 	case MappingTypeEndpointIndependent:

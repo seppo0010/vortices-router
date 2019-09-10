@@ -185,7 +185,7 @@ func TestGetExternalPortForInternalPort_Stop(t *testing.T) {
 	c := Configuration{PortAssignment: []PortAssignment{PortAssignmentRangePreservation, PortAssignmentNoPreservation}}
 	candidates, stop := c.GetExternalPortForInternalPort(1, nil)
 	attempts := 0
-	for _ = range candidates {
+	for range candidates {
 		attempts++
 		stop()
 	}

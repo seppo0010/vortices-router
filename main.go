@@ -11,10 +11,10 @@ import (
 )
 
 var usageError error
-var noWANInterface = errors.New("at least one WAN interface must be provided")
-var noLANInterface = errors.New("at least one LAN interface must be provided")
-var noWANQueue = errors.New("at least one WAN queue must be provided")
-var noLANQueue = errors.New("at least one LAN queue must be provided")
+var errNoWANInterface = errors.New("at least one WAN interface must be provided")
+var errNoLANInterface = errors.New("at least one LAN interface must be provided")
+var errNoWANQueue = errors.New("at least one WAN queue must be provided")
+var errNoLANQueue = errors.New("at least one LAN queue must be provided")
 var lanInterfaceAndQueueMistmachFormat = "the same number of LAN interfaces and queues must be provided, got %d and %d"
 var wanInterfaceAndQueueMistmachFormat = "the same number of WAN interfaces and queues must be provided, got %d and %d"
 
@@ -68,16 +68,16 @@ func getInterfacesAndQueues() (interfaces, queues, interfaces, queues, error) {
 	flag.Parse()
 
 	if len(wanInterfaces) == 0 {
-		return nil, nil, nil, nil, noWANInterface
+		return nil, nil, nil, nil, errNoWANInterface
 	}
 	if len(lanInterfaces) == 0 {
-		return nil, nil, nil, nil, noLANInterface
+		return nil, nil, nil, nil, errNoLANInterface
 	}
 	if len(wanQueues) == 0 {
-		return nil, nil, nil, nil, noWANQueue
+		return nil, nil, nil, nil, errNoWANQueue
 	}
 	if len(lanQueues) == 0 {
-		return nil, nil, nil, nil, noLANQueue
+		return nil, nil, nil, nil, errNoLANQueue
 	}
 	if len(lanInterfaces) != len(lanQueues) {
 		return nil, nil, nil, nil, fmt.Errorf(lanInterfaceAndQueueMistmachFormat, len(lanInterfaces), len(lanQueues))

@@ -11,13 +11,17 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var NoPorts = errors.New("no available ports")
+// ErrNoPorts no port is available
+var ErrNoPorts = errors.New("no available ports")
 
+// Calls operative system calls
 type Calls interface {
 	Interfaces() ([]net.Interface, error)
 	ListenUDP(network string, laddr *net.UDPAddr) (UDPConn, error)
 	OpenInterface(device string) (InterfaceHandle, error)
 }
+
+// Router forwarding LAN-WAN connections.
 type Router struct {
 	Configuration *Configuration
 	LANInterfaces []string
@@ -34,6 +38,7 @@ type Router struct {
 	Calls
 }
 
+// UDPConnContext a connection context with the metadata to keep alive.
 type UDPConnContext struct {
 	UDPConn
 	internalAddr  net.Addr
@@ -53,6 +58,7 @@ func netAddrIPPortAndProtocol(addr net.Addr) (net.IP, int, string) {
 	panic(fmt.Sprintf("unexpected net addr type, got %T", addr))
 }
 
+// NewRouter creates a router.
 func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, wanInterfaces []string, wanQueues []int) (*Router, error) {
 	var err error
 	router := &Router{
@@ -71,6 +77,7 @@ func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, wan
 	return router, err
 }
 
+// Run receives all incoming connections and forwards them as required.
 func (r *Router) Run() {
 	panic("unimplemented")
 }
@@ -82,13 +89,16 @@ func (r *Router) wanIPsForLANIP(lanIP net.IP) []net.IP {
 	return r.WANIPAddresses[r.Configuration.IPAddressPooling.GetIndexForIP(lanIP)]
 }
 
+// FindLocalIPAddresses finds IP addresses in WAN interfaces. Notice that one WAN interface
+// may hold more than one IP address (e.g.: IPv4 and IPv6). The order in `WANInterfaces` is the
+// order used for the IP addresses.
 func (r *Router) FindLocalIPAddresses() ([][]net.IP, error) {
 	ifaces, err := r.Calls.Interfaces()
 	if err != nil {
 		return nil, err
 	}
 	ipAddresses := make([][]net.IP, len(r.WANInterfaces))
-	for i, _ := range ipAddresses {
+	for i := range ipAddresses {
 		ipAddresses[i] = nil
 	}
 
@@ -301,7 +311,7 @@ func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC
 			}
 		}
 	}
-	return nil, NoPorts
+	return nil, ErrNoPorts
 }
 
 func (r *Router) forwardLANPacket(queue int, packet gopacket.Packet) (bool, error) {
@@ -359,22 +369,28 @@ func (r *Router) forwardLANUDPPacket(laddr, raddr *net.UDPAddr, srcMAC, dstMAC n
 	return nil
 }
 
+// InterfaceHandle a handle to a network interface.
 type InterfaceHandle interface {
 	Close()
 	WritePacketData(data []byte) (err error)
 }
 
+// DefaultCalls operative system real calls.
 type DefaultCalls struct{}
 
 var defaultCalls = &DefaultCalls{}
 
+// Interfaces network interfaces.
 func (r *DefaultCalls) Interfaces() ([]net.Interface, error) {
 	return net.Interfaces()
 }
+
+// ListenUDP opens a port in a network interface.
 func (r *DefaultCalls) ListenUDP(network string, laddr *net.UDPAddr) (UDPConn, error) {
 	return net.ListenUDP(network, laddr)
 }
 
+// OpenInterface creates an interface handle to write data directly into the interface.
 func (r *DefaultCalls) OpenInterface(device string) (InterfaceHandle, error) {
 	return pcap.OpenLive(device, 1024, false, pcap.BlockForever)
 }

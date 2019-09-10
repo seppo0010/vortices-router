@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// UDPConn a UDP connection
 type UDPConn interface {
 	Close() error
 	File() (f *os.File, err error)
