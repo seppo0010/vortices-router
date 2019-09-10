@@ -211,14 +211,13 @@ func (r *Router) processUDPConnOnce(cont *UDPConnContext) {
 	}
 
 	knownRaddrs := []net.Addr{}
-		for _, addr := range cont.externalAddrs {
-			knownRaddrs = append(knownRaddrs, addr)
+	for _, addr := range cont.externalAddrs {
+		knownRaddrs = append(knownRaddrs, addr)
 	}
 	if !r.Configuration.Filtering.ShouldAccept(raddr, knownRaddrs) {
 		log.WithFields(log.Fields{"raddr": raddr.String()}).Info("filtering packet")
 		return
 	}
-	// TODO: stop the goroutine at some point
 	err = r.forwardWANUDPPacket(cont, raddr, buf[:read])
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -238,6 +237,7 @@ func (r *Router) initUDPConn(laddr, raddr net.Addr, internalMAC, interfaceMAC ne
 	}
 	go func() {
 		for {
+			// TODO: stop the goroutine at some point
 			r.processUDPConnOnce(cont)
 		}
 	}()

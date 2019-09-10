@@ -227,10 +227,10 @@ func DefaultConfiguration(numWAN int) *Configuration {
 // PortCandidate is a port that may be used to connect to a WAN host based on the settings'
 // preferences.
 type PortCandidate struct {
-    // Port is the port number (0-65535)
-	Port  int
-    // Force is whether the candidate should be used replacing any existing connection.
-    // This only happens when overloading is enabled.
+	// Port is the port number (0-65535)
+	Port int
+	// Force is whether the candidate should be used replacing any existing connection.
+	// This only happens when overloading is enabled.
 	Force bool
 }
 
