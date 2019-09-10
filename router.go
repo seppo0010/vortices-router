@@ -34,7 +34,6 @@ type Router struct {
 	connectionsByMapping          map[string]*UDPConnContext
 	connectionsByInternalEndpoint map[string][]*UDPConnContext
 	connectionsByExternalEndpoint map[string][]*UDPConnContext
-	connectionsByRemoteEndpoint   map[string][]*UDPConnContext
 	Calls
 }
 
@@ -71,7 +70,6 @@ func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, wan
 		connectionsByMapping:          map[string]*UDPConnContext{},
 		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
 		connectionsByExternalEndpoint: map[string][]*UDPConnContext{},
-		connectionsByRemoteEndpoint:   map[string][]*UDPConnContext{},
 	}
 	router.WANIPAddresses, err = router.FindLocalIPAddresses()
 	return router, err
@@ -267,12 +265,6 @@ func (r *Router) addUDPConn(laddr, raddr net.Addr, udpConn *UDPConnContext) {
 		r.connectionsByExternalEndpoint[externalEndpoint] = []*UDPConnContext{}
 	}
 	r.connectionsByExternalEndpoint[externalEndpoint] = append(r.connectionsByExternalEndpoint[externalEndpoint], udpConn)
-
-	remoteEndpoint := raddr.String()
-	if _, found := r.connectionsByRemoteEndpoint[remoteEndpoint]; !found {
-		r.connectionsByRemoteEndpoint[remoteEndpoint] = []*UDPConnContext{}
-	}
-	r.connectionsByRemoteEndpoint[remoteEndpoint] = append(r.connectionsByRemoteEndpoint[remoteEndpoint], udpConn)
 }
 
 func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC net.HardwareAddr, lanInterface string) (*UDPConnContext, error) {
