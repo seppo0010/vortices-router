@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -14,11 +15,24 @@ import (
 // ErrNoPorts no port is available
 var ErrNoPorts = errors.New("no available ports")
 
+type NowUsage int
+
+const (
+	NowUsageInitRead NowUsage = iota
+	NowUsageInitWrite
+	NowUsageRead
+	NowUsageWrite
+	NowUsageReadDeadline
+	NowUsageWriteEvict
+	NowUsageReadEvict
+)
+
 // Calls operative system calls
 type Calls interface {
 	Interfaces() ([]net.Interface, error)
 	ListenUDP(network string, laddr *net.UDPAddr) (UDPConn, error)
 	OpenInterface(device string) (InterfaceHandle, error)
+	Now(usage NowUsage) time.Time
 }
 
 // Router forwarding LAN-WAN connections.
@@ -44,6 +58,8 @@ type UDPConnContext struct {
 	internalMAC   net.HardwareAddr
 	interfaceMAC  net.HardwareAddr
 	lanInterface  string
+	lastWrite     time.Time
+	lastRead      time.Time
 }
 
 func netAddrIPPortAndProtocol(addr net.Addr) (net.IP, int, string) {
@@ -195,17 +211,29 @@ func (r *Router) forwardWANUDPPacket(cont *UDPConnContext, raddr net.Addr, messa
 	return handle.WritePacketData(buf.Bytes())
 }
 
-func (r *Router) processUDPConnOnce(cont *UDPConnContext) {
-	buf := make([]byte, 1500)
-	read, raddr, err := cont.UDPConn.ReadFromUDP(buf)
+func (r *Router) processUDPConnOnce(cont *UDPConnContext) bool {
+	err := cont.UDPConn.SetReadDeadline(r.Now(NowUsageReadDeadline).Add(r.Configuration.MappingRefresh))
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error reading udp conn")
-		return
+		}).Error("error setting deadline")
+		return true
 	}
+
+	buf := make([]byte, 1500)
+	read, raddr, err := cont.UDPConn.ReadFromUDP(buf)
+	if err != nil {
+		if netError, ok := err.(net.Error); ok && netError.Timeout() {
+			return false
+		}
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error reading udp conn")
+		return true
+	}
+	cont.lastRead = r.Now(NowUsageRead)
 	if raddr == nil {
-		return
+		return true
 	}
 
 	knownRaddrs := []net.Addr{}
@@ -214,16 +242,31 @@ func (r *Router) processUDPConnOnce(cont *UDPConnContext) {
 	}
 	if !r.Configuration.Filtering.ShouldAccept(raddr, knownRaddrs) {
 		log.WithFields(log.Fields{"raddr": raddr.String()}).Info("filtering packet")
-		return
+		return true
 	}
 	err = r.forwardWANUDPPacket(cont, raddr, buf[:read])
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error forwarding udp packet")
-		return
+		return true
 	}
+	return true
 }
+
+func (r *Router) shouldEvict(cont *UDPConnContext) bool {
+	if r.Configuration.OutboundRefreshBehavior && cont.lastWrite.Add(r.Configuration.MappingRefresh).Sub(r.Now(NowUsageWriteEvict)).Seconds() < 0 {
+		return false
+	}
+	if r.Configuration.InboundRefreshBehavior && cont.lastRead.Add(r.Configuration.MappingRefresh).Sub(r.Now(NowUsageReadEvict)).Seconds() < 0 {
+		return false
+	}
+	return true
+}
+
+func (r *Router) evict(cont *UDPConnContext) {
+}
+
 func (r *Router) initUDPConn(laddr, raddr net.Addr, internalMAC, interfaceMAC net.HardwareAddr, lanInterface string, udpConn UDPConn) *UDPConnContext {
 	cont := &UDPConnContext{
 		UDPConn:       udpConn,
@@ -232,11 +275,19 @@ func (r *Router) initUDPConn(laddr, raddr net.Addr, internalMAC, interfaceMAC ne
 		internalMAC:   internalMAC,
 		interfaceMAC:  interfaceMAC,
 		lanInterface:  lanInterface,
+		lastWrite:     r.Now(NowUsageInitWrite),
+		lastRead:      r.Now(NowUsageInitRead),
 	}
 	go func() {
 		for {
-			// TODO: stop the goroutine at some point
-			r.processUDPConnOnce(cont)
+			if !r.processUDPConnOnce(cont) {
+				// read timed out, check if we should stop
+				// it is possible that we do not have to if we have written something and OutboundRefreshBehavior is true
+				if r.shouldEvict(cont) {
+					r.evict(cont)
+					break
+				}
+			}
 		}
 	}()
 	return cont
@@ -347,6 +398,7 @@ func (r *Router) forwardLANUDPPacket(laddr, raddr *net.UDPAddr, srcMAC, dstMAC n
 		}
 		pos += n
 	}
+	conn.lastWrite = r.Now(NowUsageWrite)
 	return nil
 }
 
@@ -374,4 +426,9 @@ func (r *DefaultCalls) ListenUDP(network string, laddr *net.UDPAddr) (UDPConn, e
 // OpenInterface creates an interface handle to write data directly into the interface.
 func (r *DefaultCalls) OpenInterface(device string) (InterfaceHandle, error) {
 	return pcap.OpenLive(device, 1024, false, pcap.BlockForever)
+}
+
+// Now returns the current time
+func (r *DefaultCalls) Now(usage NowUsage) time.Time {
+	return time.Now()
 }

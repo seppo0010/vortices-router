@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -15,6 +17,7 @@ import (
 type MockCalls struct {
 	bindPorts  map[int]bool
 	interfaces map[string]bytes.Buffer
+	now        map[NowUsage][]time.Time
 	DefaultCalls
 }
 
@@ -40,6 +43,18 @@ func (m *MockCalls) OpenInterface(device string) (InterfaceHandle, error) {
 			m.interfaces[device] = buffer
 		},
 	}, nil
+}
+
+func (m *MockCalls) Now(usage NowUsage) time.Time {
+	if m.now == nil {
+		return m.DefaultCalls.Now(usage)
+	}
+	if nowUsageList, found := m.now[usage]; !found || len(nowUsageList) == 0 {
+		panic(fmt.Sprintf("missing usage for %d", usage))
+	}
+	t := m.now[usage][0]
+	m.now[usage] = m.now[usage][1:]
+	return t
 }
 
 type MockInterfaceHandle struct {
@@ -300,7 +315,13 @@ func TestConnCreationContiguity(t *testing.T) {
 	}
 }
 
-func testFilter(t *testing.T, configuration *Configuration, forward bool, raddr net.Addr) {
+func testFilter(t *testing.T, configuration *Configuration, forward bool, raddr net.Addr) *Router {
+	return testFilterWithCalls(t, configuration, forward, raddr, &MockCalls{
+		bindPorts: map[int]bool{9876: true},
+	})
+}
+
+func testFilterWithCalls(t *testing.T, configuration *Configuration, forward bool, raddr net.Addr, calls *MockCalls) *Router {
 	log.SetOutput(ioutil.Discard)
 
 	myIP := net.ParseIP("10.0.0.1")
@@ -311,9 +332,7 @@ func testFilter(t *testing.T, configuration *Configuration, forward bool, raddr 
 		connectionsByMapping:          map[string]*UDPConnContext{},
 		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
 
-		Calls: &MockCalls{
-			bindPorts: map[int]bool{9876: true},
-		},
+		Calls: calls,
 	}
 
 	laddr := &net.UDPAddr{
@@ -353,6 +372,7 @@ func testFilter(t *testing.T, configuration *Configuration, forward bool, raddr 
 	} else if forward && len(buffer.Bytes()) == 0 {
 		t.Fatalf("expected forwarding, got 0 bytes")
 	}
+	return router
 }
 
 func TestAcceptFilterEndpointIndependent(t *testing.T) {
@@ -379,4 +399,147 @@ func TestAcceptFilterAddressAndPortDependent(t *testing.T) {
 	testFilter(t, configuration, false, &net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 12344})
 	testFilter(t, configuration, false, &net.UDPAddr{IP: net.ParseIP("1.1.1.2"), Port: 12344})
 	testFilter(t, configuration, false, &net.TCPAddr{IP: net.ParseIP("1.1.1.1"), Port: 12345})
+}
+
+func TestReadUpdatesLastRead(t *testing.T) {
+	configuration := DefaultConfiguration(1)
+
+	lastRead := time.Date(2019, time.January, 3, 4, 5, 6, 7, time.UTC)
+	calls := &MockCalls{
+		bindPorts: map[int]bool{9876: true},
+		now: map[NowUsage][]time.Time{
+			NowUsageInitRead:     []time.Time{},
+			NowUsageInitWrite:    []time.Time{},
+			NowUsageRead:         []time.Time{lastRead},
+			NowUsageWrite:        []time.Time{},
+			NowUsageReadDeadline: []time.Time{time.Date(2020, time.January, 3, 4, 5, 6, 7, time.UTC)},
+			NowUsageWriteEvict:   []time.Time{},
+			NowUsageReadEvict:    []time.Time{},
+		},
+	}
+	router := testFilterWithCalls(t, configuration, true, &net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 12345}, calls)
+	cont := router.connectionsByMapping["10.0.0.2:12344"]
+	if cont.lastRead != lastRead {
+		t.Errorf("expected last read to be %v, got %v instead", lastRead, cont.lastRead)
+	}
+}
+
+func TestWriteUpdatesLastWrite(t *testing.T) {
+	configuration := DefaultConfiguration(1)
+	lastWrite := time.Date(2019, time.January, 3, 4, 5, 6, 7, time.UTC)
+	myIP := net.ParseIP("10.0.0.1")
+	router := &Router{
+		WANIPAddresses:                [][]net.IP{[]net.IP{myIP}},
+		WANInterfaces:                 []string{"lo"},
+		Configuration:                 configuration,
+		connectionsByMapping:          map[string]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
+
+		Calls: &MockCalls{
+			bindPorts: map[int]bool{},
+			now: map[NowUsage][]time.Time{
+				NowUsageInitRead:     []time.Time{time.Date(2019, time.February, 9, 4, 5, 6, 7, time.UTC)},
+				NowUsageInitWrite:    []time.Time{time.Date(2019, time.February, 3, 4, 5, 6, 7, time.UTC)},
+				NowUsageRead:         []time.Time{},
+				NowUsageWrite:        []time.Time{lastWrite},
+				NowUsageReadDeadline: []time.Time{},
+				NowUsageWriteEvict:   []time.Time{},
+				NowUsageReadEvict:    []time.Time{},
+			},
+		},
+	}
+
+	laddr := &net.UDPAddr{
+		IP:   net.ParseIP("10.0.0.2"),
+		Port: 12345,
+	}
+	raddr := &net.UDPAddr{
+		IP:   net.ParseIP("1.1.1.1"),
+		Port: 1234,
+	}
+	err := router.forwardLANUDPPacket(laddr, raddr, net.HardwareAddr{}, net.HardwareAddr{}, "", []byte{1, 2, 3})
+	if err != nil {
+		t.Fatalf("got unexpected error: %v", err)
+	}
+
+	cont := router.connectionsByMapping["10.0.0.2:12345"]
+	if cont.lastWrite != lastWrite {
+		t.Errorf("expected last write to be %v, got %v instead", lastWrite, cont.lastWrite)
+	}
+}
+
+func TestSetsReadDeadline(t *testing.T) {
+	configuration := DefaultConfiguration(1)
+	configuration.MappingRefresh = 8 * time.Second
+
+	readDeadline := time.Date(2019, time.February, 3, 4, 5, 6, 7, time.UTC)
+	calls := &MockCalls{
+		bindPorts: map[int]bool{9876: true},
+		now: map[NowUsage][]time.Time{
+			NowUsageInitRead:     []time.Time{},
+			NowUsageInitWrite:    []time.Time{},
+			NowUsageRead:         []time.Time{},
+			NowUsageWrite:        []time.Time{},
+			NowUsageReadDeadline: []time.Time{readDeadline},
+			NowUsageWriteEvict:   []time.Time{},
+			NowUsageReadEvict:    []time.Time{},
+		},
+	}
+
+	log.SetOutput(ioutil.Discard)
+	myIP := net.ParseIP("10.0.0.1")
+	router := &Router{
+		WANIPAddresses:                [][]net.IP{[]net.IP{myIP}},
+		WANInterfaces:                 []string{"lo"},
+		Configuration:                 configuration,
+		connectionsByMapping:          map[string]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
+
+		Calls: calls,
+	}
+
+	laddr := &net.UDPAddr{
+		IP:   net.ParseIP("10.0.0.2"),
+		Port: 12344,
+	}
+	raddr := &net.UDPAddr{
+		IP:   net.ParseIP("1.1.1.1"),
+		Port: 1234,
+	}
+	srcMAC, _ := net.ParseMAC("00:00:5e:00:53:01")
+	dstMAC, _ := net.ParseMAC("10:00:5e:00:53:02")
+	cont := &UDPConnContext{
+		lanInterface:  "eth23",
+		interfaceMAC:  srcMAC,
+		internalMAC:   dstMAC,
+		internalAddr:  laddr,
+		externalAddrs: []net.Addr{raddr},
+		UDPConn: &UDPConnMock{
+			laddr: &net.UDPAddr{
+				IP:   net.ParseIP("10.0.0.1"),
+				Port: 9876,
+			},
+			toRead: []*UDPConnPacket{},
+		},
+	}
+	router.addUDPConn(laddr, raddr, cont)
+
+	router.processUDPConnOnce(cont)
+	setReadDeadline := router.connectionsByMapping["10.0.0.2:12344"].UDPConn.(*UDPConnMock).readDeadline
+	expected := readDeadline.Add(configuration.MappingRefresh)
+	if setReadDeadline != expected {
+		t.Errorf("expected set read deadline to be %v, got %v", expected, setReadDeadline)
+	}
+}
+
+func TestFinishesOnDeadline(t *testing.T) {
+	t.Error("unimplemented")
+}
+
+func TestDoesntFinishIfInboudRefresh(t *testing.T) {
+	t.Error("unimplemented")
+}
+
+func TestDoesFinishIfNoInboudRefresh(t *testing.T) {
+	t.Error("unimplemented")
 }
