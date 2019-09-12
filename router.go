@@ -23,8 +23,8 @@ const (
 	NowUsageRead
 	NowUsageWrite
 	NowUsageReadDeadline
-	NowUsageWriteEvict
-	NowUsageReadEvict
+	NowUsageOutboundEvict
+	NowUsageInboundEvict
 )
 
 // Calls operative system calls
@@ -58,8 +58,8 @@ type UDPConnContext struct {
 	internalMAC   net.HardwareAddr
 	interfaceMAC  net.HardwareAddr
 	lanInterface  string
-	lastWrite     time.Time
-	lastRead      time.Time
+	lastOutbound  time.Time
+	lastInbound   time.Time
 }
 
 func netAddrIPPortAndProtocol(addr net.Addr) (net.IP, int, string) {
@@ -231,7 +231,7 @@ func (r *Router) processUDPConnOnce(cont *UDPConnContext) bool {
 		}).Error("error reading udp conn")
 		return true
 	}
-	cont.lastRead = r.Now(NowUsageRead)
+	cont.lastInbound = r.Now(NowUsageRead)
 	if raddr == nil {
 		return true
 	}
@@ -255,10 +255,11 @@ func (r *Router) processUDPConnOnce(cont *UDPConnContext) bool {
 }
 
 func (r *Router) shouldEvict(cont *UDPConnContext) bool {
-	if r.Configuration.OutboundRefreshBehavior && cont.lastWrite.Add(r.Configuration.MappingRefresh).Sub(r.Now(NowUsageWriteEvict)).Seconds() < 0 {
+	if r.Configuration.OutboundRefreshBehavior && cont.lastOutbound.Add(r.Configuration.MappingRefresh).Sub(r.Now(NowUsageOutboundEvict)).Seconds() > 0 {
 		return false
 	}
-	if r.Configuration.InboundRefreshBehavior && cont.lastRead.Add(r.Configuration.MappingRefresh).Sub(r.Now(NowUsageReadEvict)).Seconds() < 0 {
+
+	if r.Configuration.InboundRefreshBehavior && cont.lastInbound.Add(r.Configuration.MappingRefresh).Sub(r.Now(NowUsageInboundEvict)).Seconds() > 0 {
 		return false
 	}
 	return true
@@ -275,8 +276,8 @@ func (r *Router) initUDPConn(laddr, raddr net.Addr, internalMAC, interfaceMAC ne
 		internalMAC:   internalMAC,
 		interfaceMAC:  interfaceMAC,
 		lanInterface:  lanInterface,
-		lastWrite:     r.Now(NowUsageInitWrite),
-		lastRead:      r.Now(NowUsageInitRead),
+		lastOutbound:  r.Now(NowUsageInitWrite),
+		lastInbound:   r.Now(NowUsageInitRead),
 	}
 	go func() {
 		for {
@@ -398,7 +399,7 @@ func (r *Router) forwardLANUDPPacket(laddr, raddr *net.UDPAddr, srcMAC, dstMAC n
 		}
 		pos += n
 	}
-	conn.lastWrite = r.Now(NowUsageWrite)
+	conn.lastOutbound = r.Now(NowUsageWrite)
 	return nil
 }
 

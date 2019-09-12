@@ -404,29 +404,29 @@ func TestAcceptFilterAddressAndPortDependent(t *testing.T) {
 func TestReadUpdatesLastRead(t *testing.T) {
 	configuration := DefaultConfiguration(1)
 
-	lastRead := time.Date(2019, time.January, 3, 4, 5, 6, 7, time.UTC)
+	lastOutbound := time.Date(2019, time.January, 3, 4, 5, 6, 7, time.UTC)
 	calls := &MockCalls{
 		bindPorts: map[int]bool{9876: true},
 		now: map[NowUsage][]time.Time{
-			NowUsageInitRead:     []time.Time{},
-			NowUsageInitWrite:    []time.Time{},
-			NowUsageRead:         []time.Time{lastRead},
-			NowUsageWrite:        []time.Time{},
-			NowUsageReadDeadline: []time.Time{time.Date(2020, time.January, 3, 4, 5, 6, 7, time.UTC)},
-			NowUsageWriteEvict:   []time.Time{},
-			NowUsageReadEvict:    []time.Time{},
+			NowUsageInitRead:      []time.Time{},
+			NowUsageInitWrite:     []time.Time{},
+			NowUsageRead:          []time.Time{lastOutbound},
+			NowUsageWrite:         []time.Time{},
+			NowUsageReadDeadline:  []time.Time{time.Date(2020, time.January, 3, 4, 5, 6, 7, time.UTC)},
+			NowUsageOutboundEvict: []time.Time{},
+			NowUsageInboundEvict:  []time.Time{},
 		},
 	}
 	router := testFilterWithCalls(t, configuration, true, &net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 12345}, calls)
 	cont := router.connectionsByMapping["10.0.0.2:12344"]
-	if cont.lastRead != lastRead {
-		t.Errorf("expected last read to be %v, got %v instead", lastRead, cont.lastRead)
+	if cont.lastOutbound != lastOutbound {
+		t.Errorf("expected last read to be %v, got %v instead", lastOutbound, cont.lastOutbound)
 	}
 }
 
 func TestWriteUpdatesLastWrite(t *testing.T) {
 	configuration := DefaultConfiguration(1)
-	lastWrite := time.Date(2019, time.January, 3, 4, 5, 6, 7, time.UTC)
+	lastOutbound := time.Date(2019, time.January, 3, 4, 5, 6, 7, time.UTC)
 	myIP := net.ParseIP("10.0.0.1")
 	router := &Router{
 		WANIPAddresses:                [][]net.IP{[]net.IP{myIP}},
@@ -438,13 +438,13 @@ func TestWriteUpdatesLastWrite(t *testing.T) {
 		Calls: &MockCalls{
 			bindPorts: map[int]bool{},
 			now: map[NowUsage][]time.Time{
-				NowUsageInitRead:     []time.Time{time.Date(2019, time.February, 9, 4, 5, 6, 7, time.UTC)},
-				NowUsageInitWrite:    []time.Time{time.Date(2019, time.February, 3, 4, 5, 6, 7, time.UTC)},
-				NowUsageRead:         []time.Time{},
-				NowUsageWrite:        []time.Time{lastWrite},
-				NowUsageReadDeadline: []time.Time{},
-				NowUsageWriteEvict:   []time.Time{},
-				NowUsageReadEvict:    []time.Time{},
+				NowUsageInitRead:      []time.Time{time.Date(2019, time.February, 9, 4, 5, 6, 7, time.UTC)},
+				NowUsageInitWrite:     []time.Time{time.Date(2019, time.February, 3, 4, 5, 6, 7, time.UTC)},
+				NowUsageRead:          []time.Time{},
+				NowUsageWrite:         []time.Time{lastOutbound},
+				NowUsageReadDeadline:  []time.Time{},
+				NowUsageOutboundEvict: []time.Time{},
+				NowUsageInboundEvict:  []time.Time{},
 			},
 		},
 	}
@@ -463,8 +463,8 @@ func TestWriteUpdatesLastWrite(t *testing.T) {
 	}
 
 	cont := router.connectionsByMapping["10.0.0.2:12345"]
-	if cont.lastWrite != lastWrite {
-		t.Errorf("expected last write to be %v, got %v instead", lastWrite, cont.lastWrite)
+	if cont.lastOutbound != lastOutbound {
+		t.Errorf("expected last write to be %v, got %v instead", lastOutbound, cont.lastOutbound)
 	}
 }
 
@@ -476,13 +476,13 @@ func TestSetsReadDeadline(t *testing.T) {
 	calls := &MockCalls{
 		bindPorts: map[int]bool{9876: true},
 		now: map[NowUsage][]time.Time{
-			NowUsageInitRead:     []time.Time{},
-			NowUsageInitWrite:    []time.Time{},
-			NowUsageRead:         []time.Time{},
-			NowUsageWrite:        []time.Time{},
-			NowUsageReadDeadline: []time.Time{readDeadline},
-			NowUsageWriteEvict:   []time.Time{},
-			NowUsageReadEvict:    []time.Time{},
+			NowUsageInitRead:      []time.Time{},
+			NowUsageInitWrite:     []time.Time{},
+			NowUsageRead:          []time.Time{},
+			NowUsageWrite:         []time.Time{},
+			NowUsageReadDeadline:  []time.Time{readDeadline},
+			NowUsageOutboundEvict: []time.Time{},
+			NowUsageInboundEvict:  []time.Time{},
 		},
 	}
 
@@ -532,14 +532,160 @@ func TestSetsReadDeadline(t *testing.T) {
 	}
 }
 
-func TestFinishesOnDeadline(t *testing.T) {
-	t.Error("unimplemented")
+func TestDoesntFinishIfInboundRefresh(t *testing.T) {
+	configuration := DefaultConfiguration(1)
+	configuration.MappingRefresh = 8 * time.Second
+	configuration.OutboundRefreshBehavior = false
+	configuration.InboundRefreshBehavior = true
+	lastInbound := time.Date(2019, time.February, 3, 4, 5, 6, 7, time.UTC)
+	now := time.Date(2019, time.February, 3, 4, 5, 6, 9, time.UTC)
+	router := &Router{
+		Configuration: configuration,
+		Calls: &MockCalls{
+			bindPorts: map[int]bool{9876: true},
+			now: map[NowUsage][]time.Time{
+				NowUsageInboundEvict: []time.Time{now},
+			},
+		},
+	}
+
+	if router.shouldEvict(&UDPConnContext{lastInbound: lastInbound}) {
+		t.Errorf("expected no eviction at %v after inbound %v with mapping refresh %v and inbound refresh behavior %v",
+			now,
+			lastInbound,
+			configuration.MappingRefresh,
+			configuration.InboundRefreshBehavior,
+		)
+	}
 }
 
-func TestDoesntFinishIfInboudRefresh(t *testing.T) {
-	t.Error("unimplemented")
+func TestFinishIfInboundRefreshAndTimeout(t *testing.T) {
+	configuration := DefaultConfiguration(1)
+	configuration.MappingRefresh = 8 * time.Second
+	configuration.OutboundRefreshBehavior = false
+	configuration.InboundRefreshBehavior = true
+	lastInbound := time.Date(2019, time.February, 3, 4, 5, 6, 7, time.UTC)
+	now := time.Date(2019, time.February, 3, 4, 5, 16, 7, time.UTC)
+	router := &Router{
+		Configuration: configuration,
+		Calls: &MockCalls{
+			now: map[NowUsage][]time.Time{
+				NowUsageInboundEvict: []time.Time{now},
+			},
+		},
+	}
+
+	if !router.shouldEvict(&UDPConnContext{lastInbound: lastInbound}) {
+		t.Errorf("expected eviction at %v after inbound %v with mapping refresh %v and inbound refresh behavior %v",
+			now,
+			lastInbound,
+			configuration.MappingRefresh,
+			configuration.InboundRefreshBehavior,
+		)
+	}
 }
 
-func TestDoesFinishIfNoInboudRefresh(t *testing.T) {
-	t.Error("unimplemented")
+func TestFinishIfNoInboundRefresh(t *testing.T) {
+	configuration := DefaultConfiguration(1)
+	configuration.MappingRefresh = 8 * time.Second
+	configuration.OutboundRefreshBehavior = false
+	configuration.InboundRefreshBehavior = false
+	lastOutbound := time.Date(2019, time.February, 3, 4, 5, 6, 7, time.UTC)
+	now := time.Date(2019, time.February, 3, 4, 5, 16, 7, time.UTC)
+	router := &Router{
+		Configuration: configuration,
+		Calls: &MockCalls{
+			now: map[NowUsage][]time.Time{
+				NowUsageInboundEvict: []time.Time{now},
+			},
+		},
+	}
+
+	if !router.shouldEvict(&UDPConnContext{lastOutbound: lastOutbound}) {
+		t.Errorf("expected eviction at %v after inbound %v with mapping refresh %v and inbound refresh behavior %v",
+			now,
+			lastOutbound,
+			configuration.MappingRefresh,
+			configuration.InboundRefreshBehavior,
+		)
+	}
+}
+
+func TestDoesntFinishIfOutboundRefresh(t *testing.T) {
+	configuration := DefaultConfiguration(1)
+	configuration.MappingRefresh = 8 * time.Second
+	configuration.OutboundRefreshBehavior = true
+	configuration.InboundRefreshBehavior = false
+	lastOutbound := time.Date(2019, time.February, 3, 4, 5, 6, 7, time.UTC)
+	now := time.Date(2019, time.February, 3, 4, 5, 6, 9, time.UTC)
+	router := &Router{
+		Configuration: configuration,
+		Calls: &MockCalls{
+			bindPorts: map[int]bool{9876: true},
+			now: map[NowUsage][]time.Time{
+				NowUsageOutboundEvict: []time.Time{now},
+			},
+		},
+	}
+
+	if router.shouldEvict(&UDPConnContext{lastOutbound: lastOutbound}) {
+		t.Errorf("expected no eviction at %v after outbound %v with mapping refresh %v and outbound refresh behavior %v",
+			now,
+			lastOutbound,
+			configuration.MappingRefresh,
+			configuration.OutboundRefreshBehavior,
+		)
+	}
+}
+
+func TestFinishIfOutboundRefreshAndTimeout(t *testing.T) {
+	configuration := DefaultConfiguration(1)
+	configuration.MappingRefresh = 8 * time.Second
+	configuration.OutboundRefreshBehavior = true
+	configuration.InboundRefreshBehavior = false
+	lastOutbound := time.Date(2019, time.February, 3, 4, 5, 6, 7, time.UTC)
+	now := time.Date(2019, time.February, 3, 4, 5, 16, 7, time.UTC)
+	router := &Router{
+		Configuration: configuration,
+		Calls: &MockCalls{
+			now: map[NowUsage][]time.Time{
+				NowUsageOutboundEvict: []time.Time{now},
+			},
+		},
+	}
+
+	if !router.shouldEvict(&UDPConnContext{lastOutbound: lastOutbound}) {
+		t.Errorf("expected eviction at %v after outbound %v with mapping refresh %v and outbound refresh behavior %v",
+			now,
+			lastOutbound,
+			configuration.MappingRefresh,
+			configuration.OutboundRefreshBehavior,
+		)
+	}
+}
+
+func TestFinishIfNoOutboundRefresh(t *testing.T) {
+	configuration := DefaultConfiguration(1)
+	configuration.MappingRefresh = 8 * time.Second
+	configuration.OutboundRefreshBehavior = false
+	configuration.InboundRefreshBehavior = false
+	lastOutbound := time.Date(2019, time.February, 3, 4, 5, 6, 7, time.UTC)
+	now := time.Date(2019, time.February, 3, 4, 5, 16, 7, time.UTC)
+	router := &Router{
+		Configuration: configuration,
+		Calls: &MockCalls{
+			now: map[NowUsage][]time.Time{
+				NowUsageOutboundEvict: []time.Time{now},
+			},
+		},
+	}
+
+	if !router.shouldEvict(&UDPConnContext{lastOutbound: lastOutbound}) {
+		t.Errorf("expected no eviction at %v after outbound %v with mapping refresh %v and outbound refresh behavior %v",
+			now,
+			lastOutbound,
+			configuration.MappingRefresh,
+			configuration.OutboundRefreshBehavior,
+		)
+	}
 }
