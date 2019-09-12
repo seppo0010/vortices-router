@@ -330,11 +330,20 @@ func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC
 	portCandidates, stop := r.Configuration.GetExternalPortForInternalPort(laddr.Port, contiguityPreference)
 	for portCandidate := range portCandidates {
 		for _, wanIP := range wanIPs {
-			// TODO: handle portCandidate.Force
 			eaddr := &net.UDPAddr{
 				IP:   wanIP,
 				Port: portCandidate.Port,
 			}
+
+			// TODO: test portCandidate.Force
+			if portCandidate.Force {
+				if conns, found := r.connectionsByInternalEndpoint[eaddr.String()]; found {
+					for _, conn := range conns {
+						r.evict(conn)
+					}
+				}
+			}
+
 			udpConn, err := r.Calls.ListenUDP("udp", eaddr)
 			if err == nil {
 				stop()
