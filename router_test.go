@@ -399,16 +399,16 @@ func TestAcceptFilterAddressAndPortDependent(t *testing.T) {
 	testFilter(t, configuration, false, &net.TCPAddr{IP: net.ParseIP("1.1.1.1"), Port: 12345})
 }
 
-func TestReadUpdatesLastRead(t *testing.T) {
+func TestReadUpdatesLastInbound(t *testing.T) {
 	configuration := DefaultConfiguration(1)
 
-	lastOutbound := time.Date(2019, time.January, 3, 4, 5, 6, 7, time.UTC)
+	lastInbound := time.Date(2019, time.January, 3, 4, 5, 6, 7, time.UTC)
 	calls := &MockCalls{
 		bindPorts: map[int]bool{9876: true},
 		now: map[NowUsage][]time.Time{
 			NowUsageInitRead:      []time.Time{},
 			NowUsageInitWrite:     []time.Time{},
-			NowUsageRead:          []time.Time{lastOutbound},
+			NowUsageRead:          []time.Time{lastInbound},
 			NowUsageWrite:         []time.Time{},
 			NowUsageReadDeadline:  []time.Time{time.Date(2020, time.January, 3, 4, 5, 6, 7, time.UTC)},
 			NowUsageOutboundEvict: []time.Time{},
@@ -417,8 +417,8 @@ func TestReadUpdatesLastRead(t *testing.T) {
 	}
 	router := testFilterWithCalls(t, configuration, true, &net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 12345}, calls)
 	cont := router.connectionsByMapping["10.0.0.2:12344"]
-	if cont.lastOutbound != lastOutbound {
-		t.Errorf("expected last read to be %v, got %v instead", lastOutbound, cont.lastOutbound)
+	if cont.lastInbound != lastInbound {
+		t.Errorf("expected last read to be %v, got %v instead", lastInbound, cont.lastInbound)
 	}
 }
 
