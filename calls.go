@@ -7,15 +7,23 @@ import (
 	"github.com/google/gopacket/pcap"
 )
 
+// NowUsage purpose of the now call. Useful for mocking.
 type NowUsage int
 
 const (
-	NowUsageInitRead NowUsage = iota
-	NowUsageInitWrite
-	NowUsageRead
-	NowUsageWrite
+	// NowUsageInitInbound timestamp for last inbound for new udp connection
+	NowUsageInitInbound NowUsage = iota
+	// NowUsageInitOutbound timestamp for last outbound for new udp connection
+	NowUsageInitOutbound
+	// NowUsageInbound timestamp after an inbound message is executed
+	NowUsageInbound
+	// NowUsageOutbound timestamp after an outbound message is executed
+	NowUsageOutbound
+	// NowUsageReadDeadline timestamp for network read timeout
 	NowUsageReadDeadline
+	// NowUsageOutboundEvict timestamp when validating expiration of outbound connections
 	NowUsageOutboundEvict
+	// NowUsageInboundEvict timestamp when validating expiration of inbound connections
 	NowUsageInboundEvict
 )
 

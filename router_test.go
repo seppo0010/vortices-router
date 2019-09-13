@@ -406,10 +406,10 @@ func TestReadUpdatesLastInbound(t *testing.T) {
 	calls := &MockCalls{
 		bindPorts: map[int]bool{9876: true},
 		now: map[NowUsage][]time.Time{
-			NowUsageInitRead:      []time.Time{},
-			NowUsageInitWrite:     []time.Time{},
-			NowUsageRead:          []time.Time{lastInbound},
-			NowUsageWrite:         []time.Time{},
+			NowUsageInitInbound:   []time.Time{},
+			NowUsageInitOutbound:  []time.Time{},
+			NowUsageInbound:       []time.Time{lastInbound},
+			NowUsageOutbound:      []time.Time{},
 			NowUsageReadDeadline:  []time.Time{time.Date(2020, time.January, 3, 4, 5, 6, 7, time.UTC)},
 			NowUsageOutboundEvict: []time.Time{},
 			NowUsageInboundEvict:  []time.Time{},
@@ -436,10 +436,10 @@ func TestWriteUpdatesLastWrite(t *testing.T) {
 		Calls: &MockCalls{
 			bindPorts: map[int]bool{},
 			now: map[NowUsage][]time.Time{
-				NowUsageInitRead:      []time.Time{time.Date(2019, time.February, 9, 4, 5, 6, 7, time.UTC)},
-				NowUsageInitWrite:     []time.Time{time.Date(2019, time.February, 3, 4, 5, 6, 7, time.UTC)},
-				NowUsageRead:          []time.Time{},
-				NowUsageWrite:         []time.Time{lastOutbound},
+				NowUsageInitInbound:   []time.Time{time.Date(2019, time.February, 9, 4, 5, 6, 7, time.UTC)},
+				NowUsageInitOutbound:  []time.Time{time.Date(2019, time.February, 3, 4, 5, 6, 7, time.UTC)},
+				NowUsageInbound:       []time.Time{},
+				NowUsageOutbound:      []time.Time{lastOutbound},
 				NowUsageReadDeadline:  []time.Time{},
 				NowUsageOutboundEvict: []time.Time{},
 				NowUsageInboundEvict:  []time.Time{},
@@ -474,10 +474,10 @@ func TestSetsReadDeadline(t *testing.T) {
 	calls := &MockCalls{
 		bindPorts: map[int]bool{9876: true},
 		now: map[NowUsage][]time.Time{
-			NowUsageInitRead:      []time.Time{},
-			NowUsageInitWrite:     []time.Time{},
-			NowUsageRead:          []time.Time{},
-			NowUsageWrite:         []time.Time{},
+			NowUsageInitInbound:   []time.Time{},
+			NowUsageInitOutbound:  []time.Time{},
+			NowUsageInbound:       []time.Time{},
+			NowUsageOutbound:      []time.Time{},
 			NowUsageReadDeadline:  []time.Time{readDeadline},
 			NowUsageOutboundEvict: []time.Time{},
 			NowUsageInboundEvict:  []time.Time{},

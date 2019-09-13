@@ -210,7 +210,7 @@ func (r *Router) processUDPConnOnce(cont *UDPConnContext) bool {
 		}).Error("error reading udp conn")
 		return true
 	}
-	cont.lastInbound = r.Now(NowUsageRead)
+	cont.lastInbound = r.Now(NowUsageInbound)
 	if raddr == nil {
 		return true
 	}
@@ -273,8 +273,8 @@ func (r *Router) initUDPConn(laddr, raddr net.Addr, internalMAC, interfaceMAC ne
 		internalMAC:   internalMAC,
 		interfaceMAC:  interfaceMAC,
 		lanInterface:  lanInterface,
-		lastOutbound:  r.Now(NowUsageInitWrite),
-		lastInbound:   r.Now(NowUsageInitRead),
+		lastOutbound:  r.Now(NowUsageInitOutbound),
+		lastInbound:   r.Now(NowUsageInitInbound),
 	}
 	go func() {
 		for {
@@ -396,6 +396,6 @@ func (r *Router) forwardLANUDPPacket(laddr, raddr *net.UDPAddr, srcMAC, dstMAC n
 		}
 		pos += n
 	}
-	conn.lastOutbound = r.Now(NowUsageWrite)
+	conn.lastOutbound = r.Now(NowUsageOutbound)
 	return nil
 }

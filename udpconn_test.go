@@ -90,15 +90,15 @@ func (u *UDPConnMock) WriteToUDP(b []byte, addr *net.UDPAddr) (int, error) {
 
 type timeoutError struct{}
 
-func (_ timeoutError) Error() string {
+func (timeoutError) Error() string {
 	return "i/o timeout"
 }
 
-func (_ timeoutError) Timeout() bool {
+func (timeoutError) Timeout() bool {
 	return true
 }
 
-func (_ timeoutError) Temporary() bool {
+func (timeoutError) Temporary() bool {
 	return false
 }
 
