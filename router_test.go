@@ -105,7 +105,7 @@ func TestConnCreation(t *testing.T) {
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
-		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string]*UDPConnContext{},
 
 		Calls: &MockCalls{
 			bindPorts: map[int]bool{12345: true},
@@ -150,7 +150,7 @@ func TestForwardUDPPacket(t *testing.T) {
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
-		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string]*UDPConnContext{},
 
 		Calls: &MockCalls{
 			bindPorts: map[int]bool{},
@@ -225,7 +225,7 @@ func TestForwardWANUDPPacket(t *testing.T) {
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
-		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string]*UDPConnContext{},
 
 		Calls: &MockCalls{
 			bindPorts: map[int]bool{},
@@ -278,14 +278,12 @@ func TestConnCreationContiguity(t *testing.T) {
 		WANInterfaces:        []string{"lo"},
 		Configuration:        configuration,
 		connectionsByMapping: map[string]*UDPConnContext{},
-		connectionsByInternalEndpoint: map[string][]*UDPConnContext{
-			"10.0.0.2:12344": []*UDPConnContext{
-				&UDPConnContext{
-					UDPConn: &UDPConnMock{
-						laddr: &net.UDPAddr{
-							IP:   net.ParseIP("10.0.0.1"),
-							Port: 9876,
-						},
+		connectionsByInternalEndpoint: map[string]*UDPConnContext{
+			"10.0.0.2:12344": &UDPConnContext{
+				UDPConn: &UDPConnMock{
+					laddr: &net.UDPAddr{
+						IP:   net.ParseIP("10.0.0.1"),
+						Port: 9876,
 					},
 				},
 			},
@@ -330,7 +328,7 @@ func testFilterWithCalls(t *testing.T, configuration *Configuration, forward boo
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
-		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string]*UDPConnContext{},
 
 		Calls: calls,
 	}
@@ -433,7 +431,7 @@ func TestWriteUpdatesLastWrite(t *testing.T) {
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
-		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string]*UDPConnContext{},
 
 		Calls: &MockCalls{
 			bindPorts: map[int]bool{},
@@ -493,7 +491,7 @@ func TestSetsReadDeadline(t *testing.T) {
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
-		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string]*UDPConnContext{},
 
 		Calls: calls,
 	}

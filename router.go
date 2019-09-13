@@ -46,7 +46,7 @@ type Router struct {
 	// WANIPAddresses contain a list of IPs on each LAN Interface, these might be IPv4 or IPv6
 	WANIPAddresses                [][]net.IP
 	connectionsByMapping          map[string]*UDPConnContext
-	connectionsByInternalEndpoint map[string][]*UDPConnContext
+	connectionsByInternalEndpoint map[string]*UDPConnContext
 	Calls
 }
 
@@ -83,7 +83,7 @@ func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, wan
 		WANQueues:                     wanQueues,
 		Calls:                         defaultCalls,
 		connectionsByMapping:          map[string]*UDPConnContext{},
-		connectionsByInternalEndpoint: map[string][]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string]*UDPConnContext{},
 	}
 	router.WANIPAddresses, err = router.FindLocalIPAddresses()
 	return router, err
@@ -265,7 +265,25 @@ func (r *Router) shouldEvict(cont *UDPConnContext) bool {
 	return true
 }
 
-func (r *Router) evict(cont *UDPConnContext) {
+func (r *Router) evictUDPConn(cont *UDPConnContext) error {
+	err := cont.UDPConn.Close()
+	if err != nil {
+		log.Errorf("failed to close udp connection: %s", err.Error())
+		return err
+	}
+
+	laddr := cont.internalAddr
+	for _, raddr := range cont.externalAddrs {
+		mapping := r.Configuration.GetMapping(laddr, raddr)
+		if existingConn, found := r.connectionsByMapping[mapping]; found {
+			existingConn.Close()
+		}
+		delete(r.connectionsByMapping, mapping)
+	}
+
+	internalEndpoint := laddr.String()
+	delete(r.connectionsByInternalEndpoint, internalEndpoint)
+	return nil
 }
 
 func (r *Router) initUDPConn(laddr, raddr net.Addr, internalMAC, interfaceMAC net.HardwareAddr, lanInterface string, udpConn UDPConn) *UDPConnContext {
@@ -285,7 +303,7 @@ func (r *Router) initUDPConn(laddr, raddr net.Addr, internalMAC, interfaceMAC ne
 				// read timed out, check if we should stop
 				// it is possible that we do not have to if we have written something and OutboundRefreshBehavior is true
 				if r.shouldEvict(cont) {
-					r.evict(cont)
+					r.evictUDPConn(cont)
 					break
 				}
 			}
@@ -302,30 +320,23 @@ func (r *Router) addUDPConn(laddr, raddr net.Addr, udpConn *UDPConnContext) {
 	r.connectionsByMapping[mapping] = udpConn
 
 	internalEndpoint := laddr.String()
-	if _, found := r.connectionsByInternalEndpoint[internalEndpoint]; !found {
-		r.connectionsByInternalEndpoint[internalEndpoint] = []*UDPConnContext{}
-	}
-	r.connectionsByInternalEndpoint[internalEndpoint] = append(r.connectionsByInternalEndpoint[internalEndpoint], udpConn)
+	r.connectionsByInternalEndpoint[internalEndpoint] = udpConn
 }
 
 func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC net.HardwareAddr, lanInterface string) (*UDPConnContext, error) {
 	wanIPs := r.wanIPsForLANIP(laddr.IP)
 	contiguityPreference := make([]int, 0, 2)
-	if conns, found := r.connectionsByInternalEndpoint[(&net.UDPAddr{
+	if conn, found := r.connectionsByInternalEndpoint[(&net.UDPAddr{
 		IP:   laddr.IP,
 		Port: laddr.Port - 1,
 	}).String()]; found {
-		for _, conn := range conns {
-			contiguityPreference = append(contiguityPreference, conn.LocalAddr().(*net.UDPAddr).Port+1)
-		}
+		contiguityPreference = append(contiguityPreference, conn.LocalAddr().(*net.UDPAddr).Port+1)
 	}
-	if conns, found := r.connectionsByInternalEndpoint[(&net.UDPAddr{
+	if conn, found := r.connectionsByInternalEndpoint[(&net.UDPAddr{
 		IP:   laddr.IP,
 		Port: laddr.Port + 1,
 	}).String()]; found {
-		for _, conn := range conns {
-			contiguityPreference = append(contiguityPreference, conn.LocalAddr().(*net.UDPAddr).Port-1)
-		}
+		contiguityPreference = append(contiguityPreference, conn.LocalAddr().(*net.UDPAddr).Port-1)
 	}
 	portCandidates, stop := r.Configuration.GetExternalPortForInternalPort(laddr.Port, contiguityPreference)
 	for portCandidate := range portCandidates {
@@ -337,10 +348,8 @@ func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC
 
 			// TODO: test portCandidate.Force
 			if portCandidate.Force {
-				if conns, found := r.connectionsByInternalEndpoint[eaddr.String()]; found {
-					for _, conn := range conns {
-						r.evict(conn)
-					}
+				if conn, found := r.connectionsByInternalEndpoint[eaddr.String()]; found {
+					_ = r.evictUDPConn(conn)
 				}
 			}
 
