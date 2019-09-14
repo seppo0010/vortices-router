@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"net"
 	"os"
 	"syscall"
@@ -18,13 +19,20 @@ type UDPConnPacket struct {
 type UDPConnMock struct {
 	network string
 	laddr   *net.UDPAddr
+	closed  bool
 
 	written      map[string][][]byte
 	toRead       []*UDPConnPacket
 	readDeadline time.Time
 }
 
-func (u *UDPConnMock) Close() error                  { return nil }
+func (u *UDPConnMock) Close() error {
+	if u.closed {
+		return errors.New("connection already closed")
+	}
+	u.closed = true
+	return nil
+}
 func (u *UDPConnMock) File() (f *os.File, err error) { return nil, nil }
 func (u *UDPConnMock) LocalAddr() net.Addr           { return u.laddr }
 

@@ -687,3 +687,57 @@ func TestFinishIfNoOutboundRefresh(t *testing.T) {
 		)
 	}
 }
+
+func TestEvict(t *testing.T) {
+	configuration := DefaultConfiguration(1)
+	myIP := net.ParseIP("10.0.0.1")
+	router := &Router{
+		WANIPAddresses:                [][]net.IP{[]net.IP{myIP}},
+		WANInterfaces:                 []string{"lo"},
+		Configuration:                 configuration,
+		connectionsByMapping:          map[string]*UDPConnContext{},
+		connectionsByInternalEndpoint: map[string]*UDPConnContext{},
+
+		Calls: &MockCalls{},
+	}
+
+	laddr := &net.UDPAddr{
+		IP:   net.ParseIP("10.0.0.2"),
+		Port: 12344,
+	}
+	raddr := &net.UDPAddr{
+		IP:   net.ParseIP("1.1.1.1"),
+		Port: 1234,
+	}
+	cont := &UDPConnContext{
+		internalAddr:  laddr,
+		externalAddrs: []net.Addr{raddr},
+		UDPConn: &UDPConnMock{
+			laddr: &net.UDPAddr{
+				IP:   net.ParseIP("10.0.0.1"),
+				Port: 9876,
+			},
+		},
+	}
+	router.addUDPConn(laddr, raddr, cont)
+
+	if _, found := router.connectionsByMapping["10.0.0.2:12344"]; !found {
+		t.Fatalf("expected to find connection by mapping")
+	}
+	if _, found := router.connectionsByInternalEndpoint["10.0.0.2:12344"]; !found {
+		t.Fatalf("expected to find connection by internal endpoint")
+	}
+	if cont.UDPConn.(*UDPConnMock).closed {
+		t.Fatalf("expected to connection not to be closed")
+	}
+	router.evictUDPConn(cont)
+	if _, found := router.connectionsByMapping["10.0.0.2:12344"]; found {
+		t.Fatalf("expected not to find connection by mapping")
+	}
+	if _, found := router.connectionsByInternalEndpoint["10.0.0.2:12344"]; found {
+		t.Fatalf("expected not to find connection by internal endpoint")
+	}
+	if !cont.UDPConn.(*UDPConnMock).closed {
+		t.Fatalf("expected to connection to be closed")
+	}
+}
