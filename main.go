@@ -72,7 +72,8 @@ func findInterfaceForAlias(alias string) (string, error) {
 			return "", err
 		}
 		for _, addr := range addrs {
-			ipToInterface[addr.String()] = interface_.Name
+			ip := strings.Split(addr.String(), "/")[0]
+			ipToInterface[ip] = interface_.Name
 		}
 	}
 	for _, addr := range addrs {
