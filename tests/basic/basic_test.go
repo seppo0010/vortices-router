@@ -36,7 +36,12 @@ func basicInit(t *testing.T) *Topology {
 		dc.ServiceNetworkConfig{Network: topology.LAN, Aliases: []string{"lan"}},
 		dc.ServiceNetworkConfig{Network: topology.Internet, Aliases: []string{"wan"}},
 	})
-	computerConfig := dc.ServiceConfig{Image: "ubuntu", Command: []string{"sleep", "infinity"}}
+	computerImage, err := compose.BuildDocker("computer", `
+FROM ubuntu
+RUN apt update && apt install -y iproute2
+    `)
+	assert.Nil(t, err)
+	computerConfig := dc.ServiceConfig{Image: computerImage, Command: []string{"sleep", "infinity"}}
 	topology.LANComputer = compose.AddService("lancomputer", computerConfig, []dc.ServiceNetworkConfig{
 		dc.ServiceNetworkConfig{Network: topology.LAN},
 	})
@@ -50,6 +55,10 @@ func TestBasic(t *testing.T) {
 	topology := basicInit(t)
 	err := topology.Compose.Start()
 	assert.Nil(t, err)
-	err = topology.Compose.Stop()
+	err = topology.LANComputer.SudoExec("ip", "route", "del", "default").Run()
+	assert.Nil(t, err)
+	ipAddress, err := topology.Router.GetIPAddressForNetwork(topology.LAN)
+	assert.Nil(t, err)
+	err = topology.LANComputer.SudoExec("ip", "route", "add", "default", "via", ipAddress).Run()
 	assert.Nil(t, err)
 }

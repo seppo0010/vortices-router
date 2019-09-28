@@ -4,15 +4,27 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/seppo0010/nfqueue-go/nfqueue"
 	log "github.com/sirupsen/logrus"
 )
 
 // ErrNoPorts no port is available
 var ErrNoPorts = errors.New("no available ports")
+
+type routerQueue struct {
+	router   *Router
+	queueNum int
+}
+
+var routers sync.Map
 
 // Router forwarding LAN-WAN connections.
 type Router struct {
@@ -68,9 +80,56 @@ func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, wan
 	return router, err
 }
 
+func real_callback(queue *nfqueue.Queue, payload *nfqueue.Payload) int {
+	rq, _ := routers.Load(queue)
+	r := rq.(routerQueue).router
+	queueNum := rq.(routerQueue).queueNum
+	packet := gopacket.NewPacket(payload.Data, layers.LayerTypeIPv4, gopacket.Default)
+
+	forwarded, err := r.forwardLANPacket(queueNum, packet)
+	if err != nil {
+		log.Errorf("error forwarding packet in queue %d: %s", queueNum, err.Error())
+		payload.SetVerdict(nfqueue.NF_ACCEPT)
+	} else if forwarded {
+		payload.SetVerdict(nfqueue.NF_STOP)
+	} else {
+		payload.SetVerdict(nfqueue.NF_ACCEPT)
+	}
+	return 0
+}
+
 // Run receives all incoming connections and forwards them as required.
 func (r *Router) Run() {
-	panic("unimplemented")
+	var wg sync.WaitGroup
+	for _, lanQueue := range r.LANQueues {
+		wg.Add(1)
+		go func(queueNum int) {
+			defer wg.Done()
+			q := new(nfqueue.Queue)
+			routers.Store(q, routerQueue{
+				router:   r,
+				queueNum: queueNum,
+			})
+			q.SetCallback(real_callback)
+			q.Init()
+			q.Unbind(syscall.AF_INET)
+			q.Bind(syscall.AF_INET)
+			q.CreateQueue(queueNum)
+			c := make(chan os.Signal, 1)
+			signal.Notify(c, os.Interrupt)
+			go func() {
+				for sig := range c {
+					// sig is a ^C, handle it
+					_ = sig
+					q.StopLoop()
+				}
+			}()
+			q.Loop()
+			q.DestroyQueue()
+			q.Close()
+		}(lanQueue)
+	}
+	wg.Wait()
 }
 
 func (r *Router) wanIPsForLANIP(lanIP net.IP) []net.IP {

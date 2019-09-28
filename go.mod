@@ -5,7 +5,8 @@ go 1.12
 require (
 	github.com/google/gopacket v1.1.17
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
-	github.com/seppo0010/vortices-dockercompose v0.0.0-20190927182437-2e32e6b5e12d
+	github.com/seppo0010/nfqueue-go v0.0.0-20190928072127-30b7098c8da7
+	github.com/seppo0010/vortices-dockercompose v0.0.0-20190928082356-ee40c2b9380a
 	github.com/sirupsen/logrus v1.4.2
 	github.com/stretchr/objx v0.2.0 // indirect
 	github.com/stretchr/testify v1.4.0
