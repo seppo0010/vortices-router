@@ -33,15 +33,15 @@ func basicInit(t *testing.T) *Topology {
 		Image:      routerImage,
 		Privileged: true,
 	}, []dc.ServiceNetworkConfig{
-		dc.ServiceNetworkConfig{Network: topology.LAN},
-		dc.ServiceNetworkConfig{Network: topology.Internet},
+		dc.ServiceNetworkConfig{Network: topology.LAN, Aliases: []string{"lan"}},
+		dc.ServiceNetworkConfig{Network: topology.Internet, Aliases: []string{"wan"}},
 	})
 	computerConfig := dc.ServiceConfig{Image: "ubuntu", Command: []string{"sleep", "infinity"}}
 	topology.LANComputer = compose.AddService("lancomputer", computerConfig, []dc.ServiceNetworkConfig{
-		dc.ServiceNetworkConfig{Network: topology.LAN, Aliases: []string{"lan"}},
+		dc.ServiceNetworkConfig{Network: topology.LAN},
 	})
 	topology.InternetComputer = compose.AddService("internetcomputer", computerConfig, []dc.ServiceNetworkConfig{
-		dc.ServiceNetworkConfig{Network: topology.Internet, Aliases: []string{"wan"}},
+		dc.ServiceNetworkConfig{Network: topology.Internet},
 	})
 	return topology
 }
