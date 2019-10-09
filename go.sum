@@ -23,6 +23,10 @@ github.com/seppo0010/vortices-dockercompose v0.0.0-20190928080824-a9bec813fc6d h
 github.com/seppo0010/vortices-dockercompose v0.0.0-20190928080824-a9bec813fc6d/go.mod h1:CVMoJ96gGpaTrsgR+krGiRVE1MkoDf86vzE5ZA6zzVU=
 github.com/seppo0010/vortices-dockercompose v0.0.0-20190928082356-ee40c2b9380a h1:N+wa8Aob0OPUdtPQ3y7FnU6lY0WAxF7yuNiznWBN4dc=
 github.com/seppo0010/vortices-dockercompose v0.0.0-20190928082356-ee40c2b9380a/go.mod h1:CVMoJ96gGpaTrsgR+krGiRVE1MkoDf86vzE5ZA6zzVU=
+github.com/seppo0010/vortices-dockercompose v0.0.0-20191009012438-171e058325d8 h1:YLEfgiJVJCR0Pa6bWM94LU9mh/Tr672CfqGo+Cy4Uv4=
+github.com/seppo0010/vortices-dockercompose v0.0.0-20191009012438-171e058325d8/go.mod h1:CVMoJ96gGpaTrsgR+krGiRVE1MkoDf86vzE5ZA6zzVU=
+github.com/seppo0010/vortices-dockercompose v0.0.0-20191009014255-7c909e89e007 h1:G8Qk/AucmqxhuEzpyy9zdEif0YlxnnOrqrjTji4v1q4=
+github.com/seppo0010/vortices-dockercompose v0.0.0-20191009014255-7c909e89e007/go.mod h1:CVMoJ96gGpaTrsgR+krGiRVE1MkoDf86vzE5ZA6zzVU=
 github.com/sirupsen/logrus v1.4.2 h1:SPIRibHv4MatM3XXNO2BJeFLZwZ2LvZgfQ5+UNI2im4=
 github.com/sirupsen/logrus v1.4.2/go.mod h1:tLMulIdttU9McNUspp0xgXVQah82FyeX6MwdIuYE2rE=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
@@ -49,6 +53,8 @@ golang.org/x/sys v0.0.0-20190924154521-2837fb4f24fe h1:6fAMxZRR6sl1Uq8U61gxU+kPT
 golang.org/x/sys v0.0.0-20190924154521-2837fb4f24fe/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20190927073244-c990c680b611 h1:q9u40nxWT5zRClI/uU9dHCiYGottAg6Nzz4YUQyHxdA=
 golang.org/x/sys v0.0.0-20190927073244-c990c680b611/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+golang.org/x/sys v0.0.0-20191008105621-543471e840be h1:QAcqgptGM8IQBC9K/RC4o+O9YmqEm0diQn9QmZw/0mU=
+golang.org/x/sys v0.0.0-20191008105621-543471e840be/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
 golang.org/x/text v0.3.2/go.mod h1:bEr9sfX3Q8Zfm5fL9x+3itogRgK3+ptLWKqgva+5dAk=
 golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
@@ -58,3 +64,5 @@ gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8
 gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/yaml.v2 v2.2.2 h1:ZCJp+EgiOT7lHqUV2J862kp8Qj64Jo6az82+3Td9dZw=
 gopkg.in/yaml.v2 v2.2.2/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
+gopkg.in/yaml.v2 v2.2.4 h1:/eiJrUcujPVeJ3xlSWaiNi3uSVmDGBK1pDHUHAnao1I=
+gopkg.in/yaml.v2 v2.2.4/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=

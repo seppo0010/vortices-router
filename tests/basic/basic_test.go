@@ -1,12 +1,15 @@
 package basic
 
 import (
+	"fmt"
+	"io/ioutil"
 	"path"
 	"runtime"
 	"testing"
+	"time"
 
 	dc "github.com/seppo0010/vortices-dockercompose"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type Topology struct {
@@ -23,7 +26,7 @@ func basicInit(t *testing.T) *Topology {
 
 	compose := dc.NewCompose(dc.ComposeConfig{})
 	routerImage, err := compose.BuildDockerPath("router", path.Dir(path.Dir((path.Dir(filename)))))
-	assert.Nil(t, err)
+	require.Nil(t, err)
 
 	topology := &Topology{Compose: compose}
 	topology.LAN = compose.AddNetwork("lan", dc.NetworkConfig{})
@@ -38,9 +41,9 @@ func basicInit(t *testing.T) *Topology {
 	})
 	computerImage, err := compose.BuildDocker("computer", `
 FROM ubuntu
-RUN apt update && apt install -y iproute2
+RUN apt update && apt install -y iproute2 netcat-openbsd
     `)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 	computerConfig := dc.ServiceConfig{Image: computerImage, Command: []string{"sleep", "infinity"}}
 	topology.LANComputer = compose.AddService("lancomputer", computerConfig, []dc.ServiceNetworkConfig{
 		dc.ServiceNetworkConfig{Network: topology.LAN},
@@ -54,11 +57,43 @@ RUN apt update && apt install -y iproute2
 func TestBasic(t *testing.T) {
 	topology := basicInit(t)
 	err := topology.Compose.Start()
-	assert.Nil(t, err)
+	require.Nil(t, err)
+	defer topology.Compose.Stop()
+
 	err = topology.LANComputer.SudoExec("ip", "route", "del", "default").Run()
-	assert.Nil(t, err)
+	require.Nil(t, err)
 	ipAddress, err := topology.Router.GetIPAddressForNetwork(topology.LAN)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 	err = topology.LANComputer.SudoExec("ip", "route", "add", "default", "via", ipAddress).Run()
-	assert.Nil(t, err)
+	require.Nil(t, err)
+
+	server := topology.InternetComputer.Exec("bash", "-c", "echo hello |nc -u -l 8000 -W 1")
+	err = server.Start()
+	require.Nil(t, err)
+	defer func() {
+		server.Kill()
+	}()
+
+	require.Nil(t, err)
+	internetComputerIPAddress, err := topology.InternetComputer.GetIPAddressForNetwork(topology.Internet)
+	require.Nil(t, err)
+	cmd := topology.LANComputer.Exec("bash", "-c", fmt.Sprintf("echo ''| nc %s 8000 -u -W 1", internetComputerIPAddress))
+	stdoutPipe, err := cmd.StdoutPipe()
+	require.Nil(t, err)
+	err = cmd.Start()
+	require.Nil(t, err)
+	stdout := []byte{}
+	done := make(chan bool)
+	go func() {
+		stdout, err = ioutil.ReadAll(stdoutPipe)
+		done <- true
+	}()
+	select {
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out")
+	case <-done:
+	}
+
+	require.Nil(t, err)
+	require.Equal(t, string(stdout), "hello")
 }
