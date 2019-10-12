@@ -31,8 +31,8 @@ type Router struct {
 	Configuration *Configuration
 	LANInterfaces []string
 	LANQueues     []int
+	LANAddresses  []net.HardwareAddr
 	WANInterfaces []string
-	WANQueues     []int
 
 	// WANIPAddresses contain a list of IPs on each LAN Interface, these might be IPv4 or IPv6
 	WANIPAddresses                [][]net.IP
@@ -64,14 +64,14 @@ func netAddrIPPortAndProtocol(addr net.Addr) (net.IP, int, string) {
 }
 
 // NewRouter creates a router.
-func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, wanInterfaces []string, wanQueues []int) (*Router, error) {
+func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, lanAddresses []net.HardwareAddr, wanInterfaces []string) (*Router, error) {
 	var err error
 	router := &Router{
 		Configuration:                 conf,
 		LANInterfaces:                 lanInterfaces,
 		WANInterfaces:                 wanInterfaces,
 		LANQueues:                     lanQueues,
-		WANQueues:                     wanQueues,
+		LANAddresses:                  lanAddresses,
 		Calls:                         defaultCalls,
 		connectionsByMapping:          map[string]*UDPConnContext{},
 		connectionsByInternalEndpoint: map[string]*UDPConnContext{},
@@ -80,13 +80,13 @@ func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, wan
 	return router, err
 }
 
-func real_callback(queue *nfqueue.Queue, payload *nfqueue.Payload) int {
+func real_callback(queue *nfqueue.Queue, payload *nfqueue.Payload, sourceAddr net.HardwareAddr) int {
 	rq, _ := routers.Load(queue)
 	r := rq.(routerQueue).router
 	queueNum := rq.(routerQueue).queueNum
 	packet := gopacket.NewPacket(payload.Data, layers.LayerTypeIPv4, gopacket.Default)
 
-	forwarded, err := r.forwardLANPacket(queueNum, packet)
+	forwarded, err := r.forwardLANPacket(queueNum, packet, sourceAddr)
 	if err != nil {
 		log.Errorf("error forwarding packet in queue %d: %s", queueNum, err.Error())
 		payload.SetVerdict(nfqueue.NF_ACCEPT)
@@ -403,11 +403,13 @@ func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC
 	return nil, ErrNoPorts
 }
 
-func (r *Router) forwardLANPacket(queue int, packet gopacket.Packet) (bool, error) {
+func (r *Router) forwardLANPacket(queue int, packet gopacket.Packet, sourceAddr net.HardwareAddr) (bool, error) {
 	lanInterface := ""
+	var dstMAC net.HardwareAddr
 	for i, q := range r.LANQueues {
 		if q == queue {
 			lanInterface = r.LANInterfaces[i]
+			dstMAC = r.LANAddresses[i]
 			break
 		}
 	}
@@ -418,13 +420,12 @@ func (r *Router) forwardLANPacket(queue int, packet gopacket.Packet) (bool, erro
 	udpLayer := packet.Layer(layers.LayerTypeUDP)
 	ipv4Layer := packet.Layer(layers.LayerTypeIPv4)
 	ipv6Layer := packet.Layer(layers.LayerTypeIPv6)
-	ethernetLayer := packet.Layer(layers.LayerTypeEthernet)
-	if udpLayer != nil && (ipv4Layer != nil || ipv6Layer != nil) && ethernetLayer != nil {
+
+	if udpLayer != nil && (ipv4Layer != nil || ipv6Layer != nil) {
 		udp := udpLayer.(*layers.UDP)
 		laddr := &net.UDPAddr{Port: int(udp.SrcPort)}
 		raddr := &net.UDPAddr{Port: int(udp.DstPort)}
-		srcMAC := ethernetLayer.(*layers.Ethernet).SrcMAC
-		dstMAC := ethernetLayer.(*layers.Ethernet).DstMAC
+		srcMAC := sourceAddr
 		if ipv4Layer != nil {
 			ipv4 := ipv4Layer.(*layers.IPv4)
 			laddr.IP = ipv4.SrcIP

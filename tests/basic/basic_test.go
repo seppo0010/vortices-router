@@ -41,7 +41,7 @@ func basicInit(t *testing.T) *Topology {
 	})
 	computerImage, err := compose.BuildDocker("computer", `
 FROM ubuntu
-RUN apt update && apt install -y iproute2 netcat-openbsd
+RUN apt update && apt install -y iproute2 netcat-openbsd iputils-ping
     `)
 	require.Nil(t, err)
 	computerConfig := dc.ServiceConfig{Image: computerImage, Command: []string{"sleep", "infinity"}}
@@ -59,6 +59,7 @@ func TestBasic(t *testing.T) {
 	err := topology.Compose.Start()
 	require.Nil(t, err)
 	defer topology.Compose.Stop()
+	defer topology.Compose.Clear()
 
 	err = topology.LANComputer.SudoExec("ip", "route", "del", "default").Run()
 	require.Nil(t, err)
@@ -90,10 +91,14 @@ func TestBasic(t *testing.T) {
 	}()
 	select {
 	case <-time.After(3 * time.Second):
+		logs, _ := topology.Compose.Logs()
+		print(logs)
 		t.Fatal("timed out")
 	case <-done:
 	}
 
+	logs, _ := topology.Compose.Logs()
+	print(logs)
 	require.Nil(t, err)
-	require.Equal(t, string(stdout), "hello")
+	require.Equal(t, string(stdout), "hello\n")
 }
