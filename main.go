@@ -112,8 +112,8 @@ func findInterfaceForAlias(alias string) (*net.Interface, error) {
 func setupForwardAndQueue(wanInterface, lanInterface string, lanQueue int) error {
 	commands := [][]string{
 		[]string{"iptables", "-A", "FORWARD", "-i", lanInterface, "-o", wanInterface, "-j", "NFQUEUE", "--queue-num", strconv.Itoa(lanQueue)},
-		[]string{"iptables", "-A", "FORWARD", "-i", wanInterface, "-o", lanInterface, "-m", "state", "--state", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
-		[]string{"iptables", "-t", "nat", "-A", "POSTROUTING", "-o", wanInterface, "-j", "MASQUERADE"},
+		[]string{"iptables", "-A", "FORWARD", "-p", "udp", "!", "-i", wanInterface, "-o", lanInterface, "-m", "state", "--state", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
+		[]string{"iptables", "-t", "nat", "-A", "POSTROUTING", "-p", "udp", "!", "-o", wanInterface, "-j", "MASQUERADE"},
 	}
 	for _, command := range commands {
 		if err := exec.Command(command[0], command[1:]...).Run(); err != nil {

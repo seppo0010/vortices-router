@@ -88,7 +88,10 @@ func real_callback(queue *nfqueue.Queue, payload *nfqueue.Payload, sourceAddr ne
 
 	forwarded, err := r.forwardLANPacket(queueNum, packet, sourceAddr)
 	if err != nil {
-		log.Errorf("error forwarding packet in queue %d: %s", queueNum, err.Error())
+		log.WithFields(log.Fields{
+			"queue": queueNum,
+			"error": err,
+		}).Errorf("error forwarding packet")
 		payload.SetVerdict(nfqueue.NF_ACCEPT)
 	} else if forwarded {
 		payload.SetVerdict(nfqueue.NF_STOP)
