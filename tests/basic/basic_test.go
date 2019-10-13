@@ -4,12 +4,16 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
 	"path"
 	"runtime"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/pcap"
 	dc "github.com/seppo0010/vortices-dockercompose"
 	"github.com/seppo0010/vortices-dockercompose/exec"
 	"github.com/stretchr/testify/require"
@@ -57,11 +61,19 @@ RUN apt update && apt install -y iproute2 netcat-openbsd iputils-ping tcpdump
 	return topology
 }
 
-func tcpdump(service *dc.Service, iface string) (exec.Cmd, io.ReadCloser) {
-	cmd := service.Exec("tcpdump", "-i", iface, "-n", "-l")
+func tcpdump(service *dc.Service, iface string) (exec.Cmd, string, *sync.WaitGroup) {
+	cmd := service.Exec("bash", "-c", fmt.Sprintf("tcpdump -i %s -n -l -w - udp 2> /dev/null", iface))
 	out, _ := cmd.StdoutPipe()
 	cmd.Start()
-	return cmd, out
+	f, _ := ioutil.TempFile("", fmt.Sprintf("%s*.pcap", service.ContainerName))
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		io.Copy(f, out)
+		f.Close()
+		wg.Done()
+	}()
+	return cmd, f.Name(), wg
 }
 
 func TestBasic(t *testing.T) {
@@ -88,17 +100,19 @@ func TestBasic(t *testing.T) {
 	type tcpdumpConfig struct {
 		service *dc.Service
 		iface   string
-		out     io.ReadCloser
+		path    string
 		cmd     exec.Cmd
+		wg      *sync.WaitGroup
 	}
 	tcpdumps := []*tcpdumpConfig{
-		&tcpdumpConfig{topology.LANComputer, "eth0", nil, nil},
-		&tcpdumpConfig{topology.Router, "eth0", nil, nil},
-		&tcpdumpConfig{topology.Router, "eth1", nil, nil},
-		&tcpdumpConfig{topology.InternetComputer, "eth0", nil, nil},
+		&tcpdumpConfig{service: topology.LANComputer, iface: "eth0"},
+		&tcpdumpConfig{service: topology.Router, iface: "eth0"},
+		&tcpdumpConfig{service: topology.Router, iface: "eth1"},
+		&tcpdumpConfig{service: topology.InternetComputer, iface: "eth0"},
 	}
 	for _, td := range tcpdumps {
-		td.cmd, td.out = tcpdump(td.service, td.iface)
+		td.cmd, td.path, td.wg = tcpdump(td.service, td.iface)
+		defer os.Remove(td.path)
 	}
 
 	server := topology.InternetComputer.Exec("bash", "-c", "echo hello |nc -u -l 8000 -W 1")
@@ -135,8 +149,15 @@ func TestBasic(t *testing.T) {
 
 	for _, td := range tcpdumps {
 		td.cmd.Signal(syscall.SIGINT)
-		s, _ := ioutil.ReadAll(td.out)
-		fmt.Printf("service %s, interface %s:\n%s\n", td.service.ContainerName, td.iface, string(s))
+		td.cmd.Wait()
+		td.wg.Wait()
+		handle, err := pcap.OpenOffline(td.path)
+		require.Nil(t, err)
+		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+		fmt.Printf("service %s, interface %s:\n", td.service.ContainerName, td.iface)
+		for packet := range packetSource.Packets() {
+			fmt.Printf("packet %s\n", packet.String())
+		}
 	}
 
 	require.Nil(t, err)
