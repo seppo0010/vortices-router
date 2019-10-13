@@ -1,6 +1,8 @@
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/google/btree v1.0.0 h1:0udJVsspx3VBr5FwtLhQQtuAsVc79tTq0ocGIPAU6qo=
+github.com/google/btree v1.0.0/go.mod h1:lNA+9X1NB3Zf8V7Ke586lFgjr2dZNuvo3lPJSGZ5JPQ=
 github.com/google/gopacket v1.1.17 h1:rMrlX2ZY2UbvT+sdz3+6J+pp2z+msCq9MxTU6ymxbBY=
 github.com/google/gopacket v1.1.17/go.mod h1:UdDNZ1OO62aGYVnPhxT1U6aI7ukYtA/kB8vaU0diBUM=
 github.com/google/uuid v1.1.1 h1:Gkbcsh/GbpXz7lPftLA3P6TYMwjCLYm83jiFQZF/3gY=
@@ -15,6 +17,8 @@ github.com/seppo0010/vortices-dockercompose v0.0.0-20191012140249-fa161207c315 h
 github.com/seppo0010/vortices-dockercompose v0.0.0-20191012140249-fa161207c315/go.mod h1:CVMoJ96gGpaTrsgR+krGiRVE1MkoDf86vzE5ZA6zzVU=
 github.com/seppo0010/vortices-dockercompose v0.0.0-20191012181821-d8a347ad36f9 h1:xtdc/cwAV908HuxvXWzdQpH/3eDk0oF5IHe5GLIp7xs=
 github.com/seppo0010/vortices-dockercompose v0.0.0-20191012181821-d8a347ad36f9/go.mod h1:CVMoJ96gGpaTrsgR+krGiRVE1MkoDf86vzE5ZA6zzVU=
+github.com/seppo0010/vortices-router v0.0.0-20191013021147-8cff0da5c136 h1:IBnBIcCU6fPp+TzrWy073IRDpTz/ReA3L5d3fYzEOyQ=
+github.com/seppo0010/vortices-router/tests v0.0.0-20191013021147-8cff0da5c136 h1:hPfyPPDL1r6nosYWMkH72ASq+wrf9o+ybTBDxFNekSo=
 github.com/sirupsen/logrus v1.4.2 h1:SPIRibHv4MatM3XXNO2BJeFLZwZ2LvZgfQ5+UNI2im4=
 github.com/sirupsen/logrus v1.4.2/go.mod h1:tLMulIdttU9McNUspp0xgXVQah82FyeX6MwdIuYE2rE=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=

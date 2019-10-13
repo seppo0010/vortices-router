@@ -1,8 +1,9 @@
-module github.com/seppo0010/vortices-dockercompose/tests
+module github.com/seppo0010/vortices-router/tests
 
 go 1.12
 
 require (
+	github.com/google/btree v1.0.0
 	github.com/google/gopacket v1.1.17
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/seppo0010/vortices-dockercompose v0.0.0-20191012181821-d8a347ad36f9

@@ -12,10 +12,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/btree"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/pcap"
 	dc "github.com/seppo0010/vortices-dockercompose"
 	"github.com/seppo0010/vortices-dockercompose/exec"
+	"github.com/seppo0010/vortices-router/tests"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -140,25 +143,38 @@ func TestBasic(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		logs, _ := topology.Compose.Logs()
 		print(logs)
-		t.Fatal("timed out")
+		t.Error("timed out")
 	case <-done:
 	}
 
 	logs, _ := topology.Compose.Logs()
 	print(logs)
 
+	packets := btree.New(4)
 	for _, td := range tcpdumps {
 		td.cmd.Signal(syscall.SIGINT)
 		td.cmd.Wait()
 		td.wg.Wait()
 		handle, err := pcap.OpenOffline(td.path)
-		require.Nil(t, err)
+		if err != nil {
+			assert.Nil(t, err)
+			continue
+		}
 		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
-		fmt.Printf("service %s, interface %s:\n", td.service.ContainerName, td.iface)
 		for packet := range packetSource.Packets() {
-			fmt.Printf("packet %s\n", packet.String())
+			packets.ReplaceOrInsert(&tests.PacketItem{
+				Packet:    packet,
+				Service:   td.service.ContainerName,
+				Interface: td.iface,
+			})
 		}
 	}
+
+	packets.Ascend(func(i btree.Item) bool {
+		pi := i.(*tests.PacketItem)
+		fmt.Printf("s=%s i=%s p=(%s)\n", pi.Service, pi.Interface, pi.Packet.String())
+		return true
+	})
 
 	require.Nil(t, err)
 	require.Equal(t, string(stdout), "hello\n")
