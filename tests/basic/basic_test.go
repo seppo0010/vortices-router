@@ -1,12 +1,14 @@
 package basic
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"path"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -64,19 +66,42 @@ RUN apt update && apt install -y iproute2 netcat-openbsd iputils-ping tcpdump
 	return topology
 }
 
-func tcpdump(service *dc.Service, iface string) (exec.Cmd, string, *sync.WaitGroup) {
-	cmd := service.Exec("bash", "-c", fmt.Sprintf("tcpdump -i %s -n -l -w - udp 2> /dev/null", iface))
-	out, _ := cmd.StdoutPipe()
-	cmd.Start()
+type tcpdumpListener struct {
+	cmd               exec.Cmd
+	path              string
+	finishedWaitGroup *sync.WaitGroup
+	readyWaitGroup    *sync.WaitGroup
+}
+
+func tcpdump(t *testing.T, service *dc.Service, iface string) *tcpdumpListener {
+	l := &tcpdumpListener{}
+	l.cmd = service.Exec("tcpdump", "-i", iface, "-n", "-l", "-w", "-", "udp")
+	out, _ := l.cmd.StdoutPipe()
+	_, _ = l.cmd.StderrPipe()
+	l.cmd.Start()
 	f, _ := ioutil.TempFile("", fmt.Sprintf("%s*.pcap", service.ContainerName))
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
+	l.path = f.Name()
+	l.finishedWaitGroup = &sync.WaitGroup{}
+	l.finishedWaitGroup.Add(1)
+	l.readyWaitGroup = &sync.WaitGroup{}
+	l.readyWaitGroup.Add(1)
 	go func() {
-		io.Copy(f, out)
+		outBuffered := bufio.NewReader(out)
+		line, _, err := outBuffered.ReadLine()
+		if err != nil {
+			t.Fatal(err)
+		}
+		expected := "tcpdump: listening on"
+		if !strings.HasPrefix(string(line), expected) {
+			t.Fatalf("expected buffer (%s) to be (%s)", string(line), string(expected))
+		}
+		l.readyWaitGroup.Done()
+
+		io.Copy(f, outBuffered)
 		f.Close()
-		wg.Done()
+		l.finishedWaitGroup.Done()
 	}()
-	return cmd, f.Name(), wg
+	return l
 }
 
 func TestBasic(t *testing.T) {
@@ -101,11 +126,9 @@ func TestBasic(t *testing.T) {
 	require.Nil(t, err)
 
 	type tcpdumpConfig struct {
-		service *dc.Service
-		iface   string
-		path    string
-		cmd     exec.Cmd
-		wg      *sync.WaitGroup
+		service  *dc.Service
+		iface    string
+		listener *tcpdumpListener
 	}
 	tcpdumps := []*tcpdumpConfig{
 		&tcpdumpConfig{service: topology.LANComputer, iface: "eth0"},
@@ -114,8 +137,11 @@ func TestBasic(t *testing.T) {
 		&tcpdumpConfig{service: topology.InternetComputer, iface: "eth0"},
 	}
 	for _, td := range tcpdumps {
-		td.cmd, td.path, td.wg = tcpdump(td.service, td.iface)
-		defer os.Remove(td.path)
+		td.listener = tcpdump(t, td.service, td.iface)
+		defer os.Remove(td.listener.path)
+	}
+	for _, td := range tcpdumps {
+		td.listener.readyWaitGroup.Wait()
 	}
 
 	server := topology.InternetComputer.Exec("bash", "-c", "echo hello |nc -u -l 8000 -W 1")
@@ -152,10 +178,10 @@ func TestBasic(t *testing.T) {
 
 	packets := btree.New(4)
 	for _, td := range tcpdumps {
-		td.cmd.Signal(syscall.SIGINT)
-		td.cmd.Wait()
-		td.wg.Wait()
-		handle, err := pcap.OpenOffline(td.path)
+		td.listener.cmd.Signal(syscall.SIGINT)
+		td.listener.cmd.Wait()
+		td.listener.finishedWaitGroup.Wait()
+		handle, err := pcap.OpenOffline(td.listener.path)
 		if err != nil {
 			assert.Nil(t, err)
 			continue
