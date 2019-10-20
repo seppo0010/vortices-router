@@ -50,6 +50,7 @@ type Topology struct {
 	Compose          *dc.Compose
 	T                *testing.T
 	TCPDumps         []*tcpdumpConfig
+	packets          []*PacketItem
 }
 
 func NewTopology(t *testing.T) *Topology {
@@ -154,6 +155,9 @@ func (topology *Topology) StartTCPDump() {
 }
 
 func (topology *Topology) Packets() []*PacketItem {
+	if topology.packets != nil {
+		return topology.packets
+	}
 	packets := btree.New(4)
 	for _, td := range topology.TCPDumps {
 		defer os.Remove(td.Listener.Path)
@@ -181,6 +185,7 @@ func (topology *Topology) Packets() []*PacketItem {
 		packetList = append(packetList, pi)
 		return true
 	})
+	topology.packets = packetList
 	return packetList
 }
 
