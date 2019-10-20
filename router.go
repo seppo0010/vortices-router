@@ -94,7 +94,7 @@ func real_callback(queue *nfqueue.Queue, payload *nfqueue.Payload, sourceAddr ne
 		}).Errorf("error forwarding packet")
 		payload.SetVerdict(nfqueue.NF_ACCEPT)
 	} else if forwarded {
-		payload.SetVerdict(nfqueue.NF_STOP)
+		payload.SetVerdict(nfqueue.NF_DROP)
 	} else {
 		payload.SetVerdict(nfqueue.NF_ACCEPT)
 	}
@@ -387,7 +387,6 @@ func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC
 				Port: portCandidate.Port,
 			}
 
-			// TODO: test portCandidate.Force
 			if portCandidate.Force {
 				if conn, found := r.connectionsByInternalEndpoint[eaddr.String()]; found {
 					_ = r.evictUDPConn(conn)

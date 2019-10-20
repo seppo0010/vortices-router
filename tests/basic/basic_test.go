@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"os"
 	"path"
 	"runtime"
@@ -20,7 +21,6 @@ import (
 	dc "github.com/seppo0010/vortices-dockercompose"
 	"github.com/seppo0010/vortices-dockercompose/exec"
 	"github.com/seppo0010/vortices-router/tests"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -75,7 +75,7 @@ type tcpdumpListener struct {
 
 func tcpdump(t *testing.T, service *dc.Service, iface string) *tcpdumpListener {
 	l := &tcpdumpListener{}
-	l.cmd = service.Exec("tcpdump", "-i", iface, "-n", "-l", "-w", "-", "udp")
+	l.cmd = service.Exec("tcpdump", "-i", iface, "-l", "--immediate-mode", "-w", "-", "udp")
 	out, _ := l.cmd.StdoutPipe()
 	_, _ = l.cmd.StderrPipe()
 	l.cmd.Start()
@@ -151,10 +151,13 @@ func TestBasic(t *testing.T) {
 		server.Kill()
 	}()
 
+	routerWANIPAddress, err := topology.Router.GetIPAddressForNetwork(topology.Internet)
+	require.Nil(t, err)
+	lanComputerIPAddress, err := topology.LANComputer.GetIPAddressForNetwork(topology.LAN)
 	require.Nil(t, err)
 	internetComputerIPAddress, err := topology.InternetComputer.GetIPAddressForNetwork(topology.Internet)
 	require.Nil(t, err)
-	cmd = topology.LANComputer.Exec("bash", "-c", fmt.Sprintf("echo ''| nc %s 8000 -u -W 1", internetComputerIPAddress))
+	cmd = topology.LANComputer.Exec("bash", "-c", fmt.Sprintf("echo ''| nc %s 8000 -p 12345 -u -W 1", internetComputerIPAddress))
 	stdoutPipe, err = cmd.StdoutPipe()
 	require.Nil(t, err)
 	err = cmd.Start()
@@ -167,14 +170,12 @@ func TestBasic(t *testing.T) {
 	}()
 	select {
 	case <-time.After(3 * time.Second):
-		logs, _ := topology.Compose.Logs()
-		print(logs)
 		t.Error("timed out")
 	case <-done:
 	}
 
-	logs, _ := topology.Compose.Logs()
-	print(logs)
+	require.Nil(t, err)
+	require.Equal(t, string(stdout), "hello\n")
 
 	packets := btree.New(4)
 	for _, td := range tcpdumps {
@@ -183,7 +184,7 @@ func TestBasic(t *testing.T) {
 		td.listener.finishedWaitGroup.Wait()
 		handle, err := pcap.OpenOffline(td.listener.path)
 		if err != nil {
-			assert.Nil(t, err)
+			t.Errorf("error reading pcap in %s (%s): %s", td.service.ContainerName, td.iface, err.Error())
 			continue
 		}
 		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
@@ -196,12 +197,47 @@ func TestBasic(t *testing.T) {
 		}
 	}
 
+	type step struct {
+		service string
+		srcIP   net.IP
+		srcPort int
+		dstIP   net.IP
+		dstPort int
+		payload []byte
+	}
+	currentStepIndex := 0
+	steps := []step{
+		step{service: "lancomputer", srcIP: net.ParseIP(lanComputerIPAddress), srcPort: 12345, dstIP: net.ParseIP(internetComputerIPAddress), dstPort: 8000, payload: []byte("\n")},
+		step{service: "router", srcIP: net.ParseIP(lanComputerIPAddress), srcPort: 12345, dstIP: net.ParseIP(internetComputerIPAddress), dstPort: 8000, payload: []byte("\n")},
+		step{service: "router", srcIP: net.ParseIP(routerWANIPAddress), srcPort: 12345, dstIP: net.ParseIP(internetComputerIPAddress), dstPort: 8000, payload: []byte("\n")},
+		step{service: "internetcomputer", srcIP: net.ParseIP(routerWANIPAddress), srcPort: 12345, dstIP: net.ParseIP(internetComputerIPAddress), dstPort: 8000, payload: []byte("\n")},
+		step{service: "internetcomputer", dstIP: net.ParseIP(routerWANIPAddress), dstPort: 12345, srcIP: net.ParseIP(internetComputerIPAddress), srcPort: 8000, payload: []byte("hello\n")},
+		step{service: "router", dstIP: net.ParseIP(routerWANIPAddress), dstPort: 12345, srcIP: net.ParseIP(internetComputerIPAddress), srcPort: 8000, payload: []byte("hello\n")},
+		step{service: "lancomputer", dstIP: net.ParseIP(lanComputerIPAddress), dstPort: 12345, srcIP: net.ParseIP(internetComputerIPAddress), srcPort: 8000, payload: []byte("hello\n")},
+	}
 	packets.Ascend(func(i btree.Item) bool {
+		if currentStepIndex >= len(steps) {
+			return false
+		}
 		pi := i.(*tests.PacketItem)
-		fmt.Printf("s=%s i=%s p=(%s)\n", pi.Service, pi.Interface, pi.Packet.String())
+		step := steps[currentStepIndex]
+		if pi.Service == step.service && pi.IPv4SrcIP().String() == step.srcIP.String() && pi.UDPSrcPort() == step.srcPort && pi.IPv4DstIP().String() == step.dstIP.String() && pi.UDPDstPort() == step.dstPort {
+			currentStepIndex += 1
+        }
 		return true
 	})
 
-	require.Nil(t, err)
-	require.Equal(t, string(stdout), "hello\n")
+	if currentStepIndex < len(steps) {
+		t.Errorf("missing step %d: %#v", currentStepIndex, steps[currentStepIndex])
+	}
+	if t.Failed() {
+		logs, _ := topology.Compose.Logs()
+		print(logs)
+
+		packets.Ascend(func(i btree.Item) bool {
+			pi := i.(*tests.PacketItem)
+			fmt.Printf("s=%s i=%s p=(%s)\n", pi.Service, pi.Interface, pi.Packet.String())
+			return true
+		})
+	}
 }
