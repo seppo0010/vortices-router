@@ -107,7 +107,7 @@ type Topology struct {
 	packets          []*PacketItem
 }
 
-func NewTopology(t *testing.T) *Topology {
+func NewTopology(t *testing.T, config string) *Topology {
 	_, filename, _, _ := runtime.Caller(1)
 
 	compose := dc.NewCompose(dc.ComposeConfig{})
@@ -118,7 +118,7 @@ func NewTopology(t *testing.T) *Topology {
 	topology.LAN = compose.AddNetwork("lan", dc.NetworkConfig{})
 	topology.Internet = compose.AddNetwork("internet", dc.NetworkConfig{})
 	topology.Router = &Service{T: t, Service: compose.AddService("router", dc.ServiceConfig{
-		Command:    []string{"./main", "--wan-alias", "wan", "--lan-alias", "lan"},
+		Command:    []string{"./main", "--wan-alias", "wan", "--lan-alias", "lan", "--config", config},
 		Image:      routerImage,
 		Privileged: true,
 	}, []dc.ServiceNetworkConfig{

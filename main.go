@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -184,12 +185,22 @@ func getInterfacesAndQueues() (interfaces, queues, addresses, interfaces, error)
 }
 
 func main() {
+	var configString string
+	flag.StringVar(&configString, "config", "", "Configuration JSON.")
 	lanInterfaces, lanQueues, lanAddresses, wanInterfaces, err := getInterfacesAndQueues()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, err.Error()+"\n")
 		os.Exit(1)
 	}
-	router, err := NewRouter(DefaultConfiguration(len(wanInterfaces)), lanInterfaces, lanQueues, lanAddresses, wanInterfaces)
+	conf := DefaultConfiguration(len(wanInterfaces))
+	if configString != "" {
+		err = json.Unmarshal([]byte(configString), conf)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, err.Error()+"\n")
+			os.Exit(1)
+		}
+	}
+	router, err := NewRouter(conf, lanInterfaces, lanQueues, lanAddresses, wanInterfaces)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, err.Error()+"\n")
 		os.Exit(1)
