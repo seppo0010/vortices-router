@@ -13,6 +13,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/google/btree"
 	"github.com/google/gopacket"
@@ -39,6 +40,59 @@ func (service *Service) SetDefaultGateway(ip string) {
 	require.Equal(service.T, string(stdout), "")
 	err = cmd.Wait()
 	require.Nil(service.T, err)
+}
+
+func (service *Service) startEcho(cmd exec.Cmd) exec.Cmd {
+	serverOut, _ := cmd.StdoutPipe()
+	err := cmd.Start()
+	require.Nil(service.T, err)
+	serverOutBuffered := bufio.NewReader(serverOut)
+	line, _, err := serverOutBuffered.ReadLine()
+	expected := "Listening on"
+	if !strings.HasPrefix(string(line), expected) {
+		service.T.Fatalf("expected buffer (%s) to be (%s)", string(line), string(expected))
+	}
+	return cmd
+}
+
+func (service *Service) StartEchoServerGolang(message string, port, times int) exec.Cmd {
+	return service.startEcho(service.Exec("bash", "-c",
+		fmt.Sprintf(
+			`echo 'package main; import "os"; import "net"; func main() { c, _ := net.ListenUDP("udp", &net.UDPAddr{Port:%d}); println("Listening on %d"); for i := 0; i < %d; i++ { buf := make([]byte, 1500); _, addr, _ := c.ReadFromUDP(buf); os.Stdout.Write(buf); c.WriteTo([]byte("%s\\n"), addr)}; }' > server.go; go run server.go`,
+			port,
+			port,
+			times,
+			message,
+		),
+	),
+	)
+
+}
+
+func (service *Service) StartEchoServer(message string, port, times int) exec.Cmd {
+	return service.startEcho(service.Exec("bash", "-c", fmt.Sprintf("echo %s |nc -u -l %d -W %d -v", message, port, times)))
+}
+
+func (service *Service) ReadEchoServer(remoteIP net.IP, remotePort, localPort, timeout int) []byte {
+	cmd := service.Exec("bash", "-c", fmt.Sprintf("echo ''| nc %s %d -p %d -u -W 1", remoteIP.String(), remotePort, localPort))
+	stdoutPipe, err := cmd.StdoutPipe()
+	require.Nil(service.T, err)
+	err = cmd.Start()
+	require.Nil(service.T, err)
+	stdout := []byte{}
+	done := make(chan bool)
+	go func() {
+		stdout, err = ioutil.ReadAll(stdoutPipe)
+		done <- true
+	}()
+	select {
+	case <-time.After(time.Duration(timeout) * time.Second):
+		service.T.Error("timed out")
+	case <-done:
+	}
+
+	require.Nil(service.T, err)
+	return stdout
 }
 
 type Topology struct {
@@ -218,4 +272,28 @@ func (topology *Topology) PrintDebug() {
 	for _, pi := range topology.Packets() {
 		fmt.Printf("s=%s i=%s p=(%s)\n", pi.Service, pi.Interface, pi.Packet.String())
 	}
+}
+
+func (topology *Topology) GetRouterWANIPAddress() net.IP {
+	ip, err := topology.Router.GetIPAddressForNetwork(topology.Internet)
+	require.Nil(topology.T, err)
+	return net.ParseIP(ip)
+}
+
+func (topology *Topology) GetRouterLANIPAddress() net.IP {
+	ip, err := topology.Router.GetIPAddressForNetwork(topology.LAN)
+	require.Nil(topology.T, err)
+	return net.ParseIP(ip)
+}
+
+func (topology *Topology) GetLANComputerIPAddress() net.IP {
+	ip, err := topology.LANComputer.GetIPAddressForNetwork(topology.LAN)
+	require.Nil(topology.T, err)
+	return net.ParseIP(ip)
+}
+
+func (topology *Topology) GetInternetComputerIPAddress() net.IP {
+	ip, err := topology.InternetComputer.GetIPAddressForNetwork(topology.Internet)
+	require.Nil(topology.T, err)
+	return net.ParseIP(ip)
 }

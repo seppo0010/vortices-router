@@ -1,13 +1,7 @@
 package basic
 
 import (
-	"bufio"
-	"fmt"
-	"io/ioutil"
-	"net"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/seppo0010/vortices-router/tests"
 	"github.com/stretchr/testify/require"
@@ -19,65 +13,32 @@ func TestBasic(t *testing.T) {
 	require.Nil(t, err)
 	defer topology.Compose.Clear()
 	defer topology.Compose.Stop()
+	defer topology.PrintDebugIfFailed()
 
-	routerWANIPAddress, err := topology.Router.GetIPAddressForNetwork(topology.Internet)
-	require.Nil(t, err)
-	lanComputerIPAddress, err := topology.LANComputer.GetIPAddressForNetwork(topology.LAN)
-	require.Nil(t, err)
-	internetComputerIPAddress, err := topology.InternetComputer.GetIPAddressForNetwork(topology.Internet)
-	require.Nil(t, err)
-	routerLANIPAddress, err := topology.Router.GetIPAddressForNetwork(topology.LAN)
-	require.Nil(t, err)
+	routerWANIPAddress := topology.GetRouterWANIPAddress()
+	routerLANIPAddress := topology.GetRouterLANIPAddress()
+	internetComputerIPAddress := topology.GetInternetComputerIPAddress()
+	lanComputerIPAddress := topology.GetLANComputerIPAddress()
 
-	topology.LANComputer.SetDefaultGateway(routerLANIPAddress)
+	topology.LANComputer.SetDefaultGateway(routerLANIPAddress.String())
 
 	topology.StartTCPDump()
 
-	server := topology.InternetComputer.Exec("bash", "-c", "echo hello |nc -u -l 8000 -W 1 -v")
-	serverOut, _ := server.StdoutPipe()
-	err = server.Start()
-	require.Nil(t, err)
-	defer func() {
-		server.Kill()
-	}()
-	serverOutBuffered := bufio.NewReader(serverOut)
-	line, _, err := serverOutBuffered.ReadLine()
-	expected := "Listening on"
-	if !strings.HasPrefix(string(line), expected) {
-		t.Fatalf("expected buffer (%s) to be (%s)", string(line), string(expected))
-	}
+	server := topology.InternetComputer.StartEchoServer("hello", 8000, 1)
+	defer server.Kill()
 
-	cmd := topology.LANComputer.Exec("bash", "-c", fmt.Sprintf("echo ''| nc %s 8000 -p 12345 -u -W 1", internetComputerIPAddress))
-	stdoutPipe, err := cmd.StdoutPipe()
-	require.Nil(t, err)
-	err = cmd.Start()
-	require.Nil(t, err)
-	stdout := []byte{}
-	done := make(chan bool)
-	go func() {
-		stdout, err = ioutil.ReadAll(stdoutPipe)
-		done <- true
-	}()
-	select {
-	case <-time.After(3 * time.Second):
-		t.Error("timed out")
-	case <-done:
-	}
-
-	require.Nil(t, err)
+	stdout := topology.LANComputer.ReadEchoServer(internetComputerIPAddress, 8000, 12345, 3)
 	require.Equal(t, string(stdout), "hello\n")
 
 	topology.ValidateSteps([]tests.Step{
-		tests.Step{Service: "lancomputer", SrcIP: net.ParseIP(lanComputerIPAddress), SrcPort: 12345, DstIP: net.ParseIP(internetComputerIPAddress), DstPort: 8000, Payload: []byte("\n")},
-		tests.Step{Service: "router", SrcIP: net.ParseIP(lanComputerIPAddress), SrcPort: 12345, DstIP: net.ParseIP(internetComputerIPAddress), DstPort: 8000, Payload: []byte("\n")},
-		tests.Step{Service: "router", SrcIP: net.ParseIP(routerWANIPAddress), SrcPort: 12345, DstIP: net.ParseIP(internetComputerIPAddress), DstPort: 8000, Payload: []byte("\n")},
-		tests.Step{Service: "internetcomputer", SrcIP: net.ParseIP(routerWANIPAddress), SrcPort: 12345, DstIP: net.ParseIP(internetComputerIPAddress), DstPort: 8000, Payload: []byte("\n")},
-		tests.Step{Service: "internetcomputer", DstIP: net.ParseIP(routerWANIPAddress), DstPort: 12345, SrcIP: net.ParseIP(internetComputerIPAddress), SrcPort: 8000, Payload: []byte("hello\n")},
-		tests.Step{Service: "router", DstIP: net.ParseIP(routerWANIPAddress), DstPort: 12345, SrcIP: net.ParseIP(internetComputerIPAddress), SrcPort: 8000, Payload: []byte("hello\n")},
-		tests.Step{Service: "lancomputer", DstIP: net.ParseIP(lanComputerIPAddress), DstPort: 12345, SrcIP: net.ParseIP(internetComputerIPAddress), SrcPort: 8000, Payload: []byte("hello\n")},
+		tests.Step{Service: "lancomputer", SrcIP: lanComputerIPAddress, SrcPort: 12345, DstIP: internetComputerIPAddress, DstPort: 8000, Payload: []byte("\n")},
+		tests.Step{Service: "router", SrcIP: lanComputerIPAddress, SrcPort: 12345, DstIP: internetComputerIPAddress, DstPort: 8000, Payload: []byte("\n")},
+		tests.Step{Service: "router", SrcIP: routerWANIPAddress, SrcPort: 12345, DstIP: internetComputerIPAddress, DstPort: 8000, Payload: []byte("\n")},
+		tests.Step{Service: "internetcomputer", SrcIP: routerWANIPAddress, SrcPort: 12345, DstIP: internetComputerIPAddress, DstPort: 8000, Payload: []byte("\n")},
+		tests.Step{Service: "internetcomputer", DstIP: routerWANIPAddress, DstPort: 12345, SrcIP: internetComputerIPAddress, SrcPort: 8000, Payload: []byte("hello\n")},
+		tests.Step{Service: "router", DstIP: routerWANIPAddress, DstPort: 12345, SrcIP: internetComputerIPAddress, SrcPort: 8000, Payload: []byte("hello\n")},
+		tests.Step{Service: "lancomputer", DstIP: lanComputerIPAddress, DstPort: 12345, SrcIP: internetComputerIPAddress, SrcPort: 8000, Payload: []byte("hello\n")},
 	})
-
-	topology.PrintDebugIfFailed()
 }
 
 func TestBusyPortMaintainRange(t *testing.T) {
@@ -86,43 +47,33 @@ func TestBusyPortMaintainRange(t *testing.T) {
 	require.Nil(t, err)
 	defer topology.Compose.Clear()
 	defer topology.Compose.Stop()
+	defer topology.PrintDebugIfFailed()
 
-	routerWANIPAddress, err := topology.Router.GetIPAddressForNetwork(topology.Internet)
-	require.Nil(t, err)
-	lanComputerIPAddress, err := topology.LANComputer.GetIPAddressForNetwork(topology.LAN)
-	require.Nil(t, err)
-	internetComputerIPAddress, err := topology.InternetComputer.GetIPAddressForNetwork(topology.Internet)
-	require.Nil(t, err)
-	routerLANIPAddress, err := topology.Router.GetIPAddressForNetwork(topology.LAN)
-	require.Nil(t, err)
+	routerWANIPAddress := topology.GetRouterWANIPAddress()
+	routerLANIPAddress := topology.GetRouterLANIPAddress()
+	internetComputerIPAddress := topology.GetInternetComputerIPAddress()
+	lanComputerIPAddress := topology.GetLANComputerIPAddress()
 
-	topology.LANComputer.SetDefaultGateway(routerLANIPAddress)
+	topology.LANComputer.SetDefaultGateway(routerLANIPAddress.String())
 
 	topology.StartTCPDump()
 
-	server := topology.Router.Exec("bash", "-c", `echo 'package main; import "io"; import "os"; import "net"; func main() { c, _ := net.ListenUDP("udp", &net.UDPAddr{Port:12345}); println("Listening on 12345"); io.Copy(os.Stdout, c)}' > server.go; go run server.go`)
-	serverOut, _ := server.StdoutPipe()
-	err = server.Start()
-	require.Nil(t, err)
-	defer func() {
-		server.Kill()
-	}()
-	serverOutBuffered := bufio.NewReader(serverOut)
-	line, _, err := serverOutBuffered.ReadLine()
-	expected := "Listening on"
-	if !strings.HasPrefix(string(line), expected) {
-		t.Fatalf("expected buffer (%s) to be (%s)", string(line), string(expected))
-	}
+	server := topology.InternetComputer.StartEchoServer("hello", 8000, 1)
+	defer server.Kill()
 
-	cmd := topology.LANComputer.Exec("bash", "-c", fmt.Sprintf("echo ''| nc %s 8000 -p 12345 -u -W 1 -w 0", internetComputerIPAddress))
-	err = cmd.Run()
-	require.Nil(t, err)
+	routerBusyPort := topology.Router.StartEchoServerGolang("just occupying a port", 12345, 1)
+	defer routerBusyPort.Kill()
+
+	stdout := topology.LANComputer.ReadEchoServer(internetComputerIPAddress, 8000, 12345, 3)
+	require.Equal(t, string(stdout), "hello\n")
 
 	topology.ValidateSteps([]tests.Step{
-		tests.Step{Service: "lancomputer", SrcIP: net.ParseIP(lanComputerIPAddress), SrcPort: 12345, DstIP: net.ParseIP(internetComputerIPAddress), DstPort: 8000, Payload: []byte("\n")},
-		tests.Step{Service: "router", SrcIP: net.ParseIP(lanComputerIPAddress), SrcPort: 12345, DstIP: net.ParseIP(internetComputerIPAddress), DstPort: 8000, Payload: []byte("\n")},
-		tests.Step{Service: "router", SrcIP: net.ParseIP(routerWANIPAddress), SrcPort: 12347, DstIP: net.ParseIP(internetComputerIPAddress), DstPort: 8000, Payload: []byte("\n")},
+		tests.Step{Service: "lancomputer", SrcIP: lanComputerIPAddress, SrcPort: 12345, DstIP: internetComputerIPAddress, DstPort: 8000, Payload: []byte("\n")},
+		tests.Step{Service: "router", SrcIP: lanComputerIPAddress, SrcPort: 12345, DstIP: internetComputerIPAddress, DstPort: 8000, Payload: []byte("\n")},
+		tests.Step{Service: "router", SrcIP: routerWANIPAddress, SrcPort: 12347, DstIP: internetComputerIPAddress, DstPort: 8000, Payload: []byte("\n")},
+		tests.Step{Service: "internetcomputer", SrcIP: routerWANIPAddress, SrcPort: 12347, DstIP: internetComputerIPAddress, DstPort: 8000, Payload: []byte("\n")},
+		tests.Step{Service: "internetcomputer", DstIP: routerWANIPAddress, DstPort: 12347, SrcIP: internetComputerIPAddress, SrcPort: 8000, Payload: []byte("hello\n")},
+		tests.Step{Service: "router", DstIP: routerWANIPAddress, DstPort: 12347, SrcIP: internetComputerIPAddress, SrcPort: 8000, Payload: []byte("hello\n")},
+		tests.Step{Service: "lancomputer", DstIP: lanComputerIPAddress, DstPort: 12345, SrcIP: internetComputerIPAddress, SrcPort: 8000, Payload: []byte("hello\n")},
 	})
-
-	topology.PrintDebugIfFailed()
 }
