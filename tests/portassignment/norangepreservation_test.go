@@ -1,4 +1,4 @@
-package basic
+package portassignment
 
 import (
 	"testing"
@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBasic(t *testing.T) {
-	topology := tests.NewTopology(t, "")
+func TestNoRangePreservationPort(t *testing.T) {
+	topology := tests.NewTopology(t, `{"PortAssignment":[3]}`)
 	err := topology.Compose.Start()
 	require.Nil(t, err)
 	defer topology.Compose.Clear()
@@ -33,10 +33,10 @@ func TestBasic(t *testing.T) {
 	topology.ValidateSteps([]tests.Step{
 		tests.Step{Service: "lancomputer", SrcIP: lanComputerIPAddress, SrcPort: 12345, DstIP: internetComputerIPAddress, DstPort: 8000, Payload: []byte("\n")},
 		tests.Step{Service: "router", SrcIP: lanComputerIPAddress, SrcPort: 12345, DstIP: internetComputerIPAddress, DstPort: 8000, Payload: []byte("\n")},
-		tests.Step{Service: "router", SrcIP: routerWANIPAddress, SrcPort: 12345, DstIP: internetComputerIPAddress, DstPort: 8000, Payload: []byte("\n")},
-		tests.Step{Service: "internetcomputer", SrcIP: routerWANIPAddress, SrcPort: 12345, DstIP: internetComputerIPAddress, DstPort: 8000, Payload: []byte("\n")},
-		tests.Step{Service: "internetcomputer", DstIP: routerWANIPAddress, DstPort: 12345, SrcIP: internetComputerIPAddress, SrcPort: 8000, Payload: []byte("hello\n")},
-		tests.Step{Service: "router", DstIP: routerWANIPAddress, DstPort: 12345, SrcIP: internetComputerIPAddress, SrcPort: 8000, Payload: []byte("hello\n")},
+		tests.Step{Service: "router", SrcIP: routerWANIPAddress, SrcPort: 1, DstIP: internetComputerIPAddress, DstPort: 8000, Payload: []byte("\n")},
+		tests.Step{Service: "internetcomputer", SrcIP: routerWANIPAddress, SrcPort: 1, DstIP: internetComputerIPAddress, DstPort: 8000, Payload: []byte("\n")},
+		tests.Step{Service: "internetcomputer", DstIP: routerWANIPAddress, DstPort: 1, SrcIP: internetComputerIPAddress, SrcPort: 8000, Payload: []byte("hello\n")},
+		tests.Step{Service: "router", DstIP: routerWANIPAddress, DstPort: 1, SrcIP: internetComputerIPAddress, SrcPort: 8000, Payload: []byte("hello\n")},
 		tests.Step{Service: "lancomputer", DstIP: lanComputerIPAddress, DstPort: 12345, SrcIP: internetComputerIPAddress, SrcPort: 8000, Payload: []byte("hello\n")},
 	})
 }
