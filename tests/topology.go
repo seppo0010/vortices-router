@@ -13,7 +13,6 @@ import (
 	"sync"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/google/btree"
 	"github.com/google/gopacket"
@@ -74,23 +73,12 @@ func (service *Service) StartEchoServer(message string, port, times int) exec.Cm
 }
 
 func (service *Service) ReadEchoServer(remoteIP net.IP, remotePort, localPort, timeout int) []byte {
-	cmd := service.Exec("bash", "-c", fmt.Sprintf("echo ''| nc %s %d -p %d -u -W 1", remoteIP.String(), remotePort, localPort))
+	cmd := service.Exec("bash", "-c", fmt.Sprintf("echo ''| nc %s %d -p %d -u -W 1 -w %d", remoteIP.String(), remotePort, localPort, timeout))
 	stdoutPipe, err := cmd.StdoutPipe()
 	require.Nil(service.T, err)
 	err = cmd.Start()
-	require.Nil(service.T, err)
-	stdout := []byte{}
-	done := make(chan bool)
-	go func() {
-		stdout, err = ioutil.ReadAll(stdoutPipe)
-		done <- true
-	}()
-	select {
-	case <-time.After(time.Duration(timeout) * time.Second):
-		service.T.Error("timed out")
-	case <-done:
-	}
-
+	stdout, err := ioutil.ReadAll(stdoutPipe)
+	cmd.Wait()
 	require.Nil(service.T, err)
 	return stdout
 }
@@ -162,6 +150,10 @@ type Step struct {
 	Payload []byte
 }
 
+func (s Step) String() string {
+	return fmt.Sprintf("{service=%s, src=%s:%d, dst=%s:%d, payload=%v}", s.Service, s.SrcIP.String(), s.SrcPort, s.DstIP.String(), s.DstPort, s.Payload)
+}
+
 func tcpdump(t *testing.T, service *Service, iface string) *tcpdumpListener {
 	l := &tcpdumpListener{}
 	l.Cmd = service.Exec("tcpdump", "-i", iface, "-l", "--immediate-mode", "-w", "-", "udp")
@@ -218,6 +210,16 @@ func (topology *Topology) Packets() []*PacketItem {
 		td.Listener.Cmd.Signal(syscall.SIGINT)
 		td.Listener.Cmd.Wait()
 		td.Listener.FinishedWaitGroup.Wait()
+		f, err := os.Stat(td.Listener.Path)
+		if err != nil {
+			topology.T.Errorf("error reading pcap in %s (%s): %s", td.Service.ContainerName, td.Interface, err.Error())
+			continue
+		}
+		if f.Size() == 0 {
+			topology.T.Logf("pcap is empty in %s (%s)", td.Service.ContainerName, td.Interface)
+			continue
+		}
+
 		handle, err := pcap.OpenOffline(td.Listener.Path)
 		if err != nil {
 			topology.T.Errorf("error reading pcap in %s (%s): %s", td.Service.ContainerName, td.Interface, err.Error())
@@ -245,18 +247,23 @@ func (topology *Topology) Packets() []*PacketItem {
 
 func (topology *Topology) ValidateSteps(steps []Step) {
 	currentStepIndex := 0
-	for _, pi := range topology.Packets() {
+	nextUsablePacket := 0
+	for i, pi := range topology.Packets() {
 		if currentStepIndex >= len(steps) {
 			break
 		}
 		step := steps[currentStepIndex]
 		if pi.Service == step.Service && pi.IPv4SrcIP().String() == step.SrcIP.String() && pi.UDPSrcPort() == step.SrcPort && pi.IPv4DstIP().String() == step.DstIP.String() && pi.UDPDstPort() == step.DstPort {
 			currentStepIndex += 1
+			nextUsablePacket = i + 1
 		}
 	}
 
 	if currentStepIndex < len(steps) {
-		topology.T.Errorf("missing step %d: %#v", currentStepIndex, steps[currentStepIndex])
+		topology.T.Errorf("missing step %d: %s", currentStepIndex, steps[currentStepIndex].String())
+		for _, pi := range topology.Packets()[nextUsablePacket:] {
+			topology.T.Logf("unread packet: %s", Step{Service: pi.Service, SrcIP: pi.IPv4SrcIP(), SrcPort: pi.UDPSrcPort(), DstIP: pi.IPv4DstIP(), DstPort: pi.UDPDstPort(), Payload: pi.UDPPayload()})
+		}
 	}
 }
 

@@ -58,6 +58,14 @@ func (pi *PacketItem) IPv4DstIP() net.IP {
 	return net.IP{}
 }
 
+func (pi *PacketItem) UDPPayload() []byte {
+	if udpLayer := pi.Packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
+		udp, _ := udpLayer.(*layers.UDP)
+		return udp.Payload
+	}
+	return []byte{}
+}
+
 type TimeItem struct {
 	time.Time
 }
