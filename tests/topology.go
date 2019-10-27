@@ -83,21 +83,23 @@ func (service *Service) ReadEchoServer(remoteIP net.IP, remotePort, localPort, t
 }
 
 type TopologyConfiguration struct {
-	NumberOfLANComputers uint
-	RouterConfig         string
+	NumberOfLANComputers      uint
+	NumberOfInternetComputers uint
+	RouterConfig              string
 }
 
 type Topology struct {
-	LAN              *dc.Network
-	Internet         *dc.Network
-	Router           *Service
-	LANComputer      *Service
-	LANComputers     []*Service
-	InternetComputer *Service
-	Compose          *dc.Compose
-	T                *testing.T
-	TCPDumps         []*tcpdumpConfig
-	packets          []*PacketItem
+	LAN               *dc.Network
+	Internet          *dc.Network
+	Router            *Service
+	LANComputer       *Service
+	LANComputers      []*Service
+	InternetComputer  *Service
+	InternetComputers []*Service
+	Compose           *dc.Compose
+	T                 *testing.T
+	TCPDumps          []*tcpdumpConfig
+	packets           []*PacketItem
 }
 
 func NewTopology(t *testing.T, topologyConfig *TopologyConfiguration) *Topology {
@@ -142,6 +144,14 @@ RUN apt update && apt install -y iproute2 netcat-openbsd iputils-ping tcpdump
 	topology.InternetComputer = &Service{T: t, Service: compose.AddService("internetcomputer", computerConfig, []dc.ServiceNetworkConfig{
 		dc.ServiceNetworkConfig{Network: topology.Internet},
 	})}
+	if topologyConfig != nil && topologyConfig.NumberOfInternetComputers > 0 {
+		topology.InternetComputers = make([]*Service, topologyConfig.NumberOfInternetComputers)
+		for i, _ := range topology.InternetComputers {
+			topology.InternetComputers[i] = &Service{T: t, Service: compose.AddService(fmt.Sprintf("internetcomputer%d", i+1), computerConfig, []dc.ServiceNetworkConfig{
+				dc.ServiceNetworkConfig{Network: topology.Internet},
+			})}
+		}
+	}
 	return topology
 }
 
@@ -211,6 +221,11 @@ func (topology *Topology) StartTCPDump() {
 	}
 	if topology.LANComputers != nil {
 		for _, c := range topology.LANComputers {
+			topology.TCPDumps = append(topology.TCPDumps, &tcpdumpConfig{Service: c, Interface: "eth0"})
+		}
+	}
+	if topology.InternetComputers != nil {
+		for _, c := range topology.InternetComputers {
 			topology.TCPDumps = append(topology.TCPDumps, &tcpdumpConfig{Service: c, Interface: "eth0"})
 		}
 	}
@@ -327,6 +342,12 @@ func (topology *Topology) GetLANComputerIPAddress() net.IP {
 
 func (topology *Topology) GetInternetComputerIPAddress() net.IP {
 	ip, err := topology.InternetComputer.GetIPAddressForNetwork(topology.Internet)
+	require.Nil(topology.T, err)
+	return net.ParseIP(ip)
+}
+
+func (topology *Topology) GetInternetComputerIPAddressIndex(index uint) net.IP {
+	ip, err := topology.InternetComputers[index].GetIPAddressForNetwork(topology.Internet)
 	require.Nil(topology.T, err)
 	return net.ParseIP(ip)
 }
