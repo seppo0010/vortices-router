@@ -20,11 +20,11 @@ const (
 	MappingTypeEndpointIndependent MappingType = iota
 	// MappingTypeAddressDependent will reuse the same outgoing endpoint for any destination
 	// while the source endpoint and the destination host matches. A packet from iAddr:iPort will
-	// use the same eAddr:ePort of and only if hAddr is the same.
+	// use the same eAddr:ePort if and only if hAddr is the same.
 	MappingTypeAddressDependent
 	// MappingTypeAddressAndPortDependent will reuse the same outgoing endpoint for any destination
 	// while the source endpoint and the destination endpoint matches. A packet from iAddr:iPort
-	// will use the same eAddr:ePort of and only if hAddr:hPort is the same.
+	// will use the same eAddr:ePort if and only if hAddr:hPort is the same.
 	MappingTypeAddressAndPortDependent
 )
 
