@@ -44,13 +44,14 @@ type Router struct {
 // UDPConnContext a connection context with the metadata to keep alive.
 type UDPConnContext struct {
 	UDPConn
-	internalAddr  net.Addr
-	externalAddrs []net.Addr
-	internalMAC   net.HardwareAddr
-	interfaceMAC  net.HardwareAddr
-	lanInterface  string
-	lastOutbound  time.Time
-	lastInbound   time.Time
+	internalAddr net.Addr
+	externalAddr net.Addr
+	remoteAddrs  []net.Addr
+	internalMAC  net.HardwareAddr
+	interfaceMAC net.HardwareAddr
+	lanInterface string
+	lastOutbound time.Time
+	lastInbound  time.Time
 }
 
 func netAddrIPPortAndProtocol(addr net.Addr) (net.IP, int, string) {
@@ -278,7 +279,7 @@ func (r *Router) processUDPConnOnce(cont *UDPConnContext) bool {
 	}
 
 	knownRaddrs := []net.Addr{}
-	for _, addr := range cont.externalAddrs {
+	for _, addr := range cont.remoteAddrs {
 		knownRaddrs = append(knownRaddrs, addr)
 	}
 	if !r.Configuration.Filtering.ShouldAccept(raddr, knownRaddrs) {
@@ -314,7 +315,7 @@ func (r *Router) evictUDPConn(cont *UDPConnContext) error {
 	}
 
 	laddr := cont.internalAddr
-	for _, raddr := range cont.externalAddrs {
+	for _, raddr := range cont.remoteAddrs {
 		mapping := r.Configuration.GetMapping(laddr, raddr)
 		if existingConn, found := r.connectionsByMapping[mapping]; found {
 			existingConn.Close()
@@ -327,16 +328,17 @@ func (r *Router) evictUDPConn(cont *UDPConnContext) error {
 	return nil
 }
 
-func (r *Router) initUDPConn(laddr, raddr net.Addr, internalMAC, interfaceMAC net.HardwareAddr, lanInterface string, udpConn UDPConn) *UDPConnContext {
+func (r *Router) initUDPConn(laddr, eaddr, raddr net.Addr, internalMAC, interfaceMAC net.HardwareAddr, lanInterface string, udpConn UDPConn) *UDPConnContext {
 	cont := &UDPConnContext{
-		UDPConn:       udpConn,
-		internalAddr:  laddr,
-		externalAddrs: []net.Addr{raddr},
-		internalMAC:   internalMAC,
-		interfaceMAC:  interfaceMAC,
-		lanInterface:  lanInterface,
-		lastOutbound:  r.Now(NowUsageInitOutbound),
-		lastInbound:   r.Now(NowUsageInitInbound),
+		UDPConn:      udpConn,
+		internalAddr: laddr,
+		externalAddr: eaddr,
+		remoteAddrs:  []net.Addr{raddr},
+		internalMAC:  internalMAC,
+		interfaceMAC: interfaceMAC,
+		lanInterface: lanInterface,
+		lastOutbound: r.Now(NowUsageInitOutbound),
+		lastInbound:  r.Now(NowUsageInitInbound),
 	}
 	go func() {
 		for {
@@ -353,15 +355,14 @@ func (r *Router) initUDPConn(laddr, raddr net.Addr, internalMAC, interfaceMAC ne
 	return cont
 }
 
-func (r *Router) addUDPConn(laddr, raddr net.Addr, udpConn *UDPConnContext) {
+func (r *Router) addUDPConn(laddr, eaddr, raddr net.Addr, udpConn *UDPConnContext) {
 	mapping := r.Configuration.GetMapping(laddr, raddr)
 	if existingConn, found := r.connectionsByMapping[mapping]; found {
 		existingConn.Close()
 	}
 	r.connectionsByMapping[mapping] = udpConn
 
-	internalEndpoint := laddr.String()
-	r.connectionsByInternalEndpoint[internalEndpoint] = udpConn
+	r.connectionsByInternalEndpoint[eaddr.String()] = udpConn
 }
 
 func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC net.HardwareAddr, lanInterface string) (*UDPConnContext, error) {
@@ -390,18 +391,20 @@ func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC
 			if portCandidate.Force {
 				if conn, found := r.connectionsByInternalEndpoint[eaddr.String()]; found {
 					_ = r.evictUDPConn(conn)
+				} else {
 				}
 			}
 
 			udpConn, err := r.Calls.ListenUDP("udp", eaddr)
 			if err == nil {
 				stop()
-				connContext := r.initUDPConn(laddr, raddr, internalMAC, interfaceMAC, lanInterface, udpConn)
-				r.addUDPConn(laddr, raddr, connContext)
+				connContext := r.initUDPConn(laddr, eaddr, raddr, internalMAC, interfaceMAC, lanInterface, udpConn)
+				r.addUDPConn(laddr, eaddr, raddr, connContext)
 				return connContext, nil
 			}
 		}
 	}
+	log.Warnf("no free ports")
 	return nil, ErrNoPorts
 }
 
@@ -448,6 +451,7 @@ func (r *Router) forwardLANUDPPacket(laddr, raddr *net.UDPAddr, srcMAC, dstMAC n
 		var err error
 		conn, err = r.udpNewConn(laddr, raddr, srcMAC, dstMAC, lanInterface)
 		if err != nil {
+			log.Errorf("error opening connection: %v", err.Error())
 			return err
 		}
 	}

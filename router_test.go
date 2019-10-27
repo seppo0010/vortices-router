@@ -137,7 +137,7 @@ func TestConnCreation(t *testing.T) {
 		t.Errorf("expected to find connection in mapping")
 	}
 
-	if _, found := router.connectionsByInternalEndpoint["10.0.0.2:12345"]; !found {
+	if _, found := router.connectionsByInternalEndpoint["10.0.0.1:12347"]; !found {
 		t.Errorf("expected to find connection in internal endpoint")
 	}
 }
@@ -333,6 +333,10 @@ func testFilterWithCalls(t *testing.T, configuration *Configuration, forward boo
 		Calls: calls,
 	}
 
+	eaddr := &net.UDPAddr{
+		IP:   myIP,
+		Port: 12344,
+	}
 	laddr := &net.UDPAddr{
 		IP:   net.ParseIP("10.0.0.2"),
 		Port: 12344,
@@ -340,11 +344,12 @@ func testFilterWithCalls(t *testing.T, configuration *Configuration, forward boo
 	srcMAC, _ := net.ParseMAC("00:00:5e:00:53:01")
 	dstMAC, _ := net.ParseMAC("10:00:5e:00:53:02")
 	cont := &UDPConnContext{
-		lanInterface:  "eth23",
-		interfaceMAC:  srcMAC,
-		internalMAC:   dstMAC,
-		internalAddr:  laddr,
-		externalAddrs: []net.Addr{raddr},
+		lanInterface: "eth23",
+		interfaceMAC: srcMAC,
+		internalMAC:  dstMAC,
+		internalAddr: laddr,
+		externalAddr: eaddr,
+		remoteAddrs:  []net.Addr{raddr},
 		UDPConn: &UDPConnMock{
 			laddr: &net.UDPAddr{
 				IP:   net.ParseIP("10.0.0.1"),
@@ -361,7 +366,7 @@ func testFilterWithCalls(t *testing.T, configuration *Configuration, forward boo
 			},
 		},
 	}
-	router.addUDPConn(laddr, raddr, cont)
+	router.addUDPConn(laddr, eaddr, raddr, cont)
 
 	router.processUDPConnOnce(cont)
 	buffer := router.Calls.(*MockCalls).interfaces["eth23"]
@@ -500,6 +505,10 @@ func TestSetsReadDeadline(t *testing.T) {
 		IP:   net.ParseIP("10.0.0.2"),
 		Port: 12344,
 	}
+	eaddr := &net.UDPAddr{
+		IP:   myIP,
+		Port: 12344,
+	}
 	raddr := &net.UDPAddr{
 		IP:   net.ParseIP("1.1.1.1"),
 		Port: 1234,
@@ -507,11 +516,11 @@ func TestSetsReadDeadline(t *testing.T) {
 	srcMAC, _ := net.ParseMAC("00:00:5e:00:53:01")
 	dstMAC, _ := net.ParseMAC("10:00:5e:00:53:02")
 	cont := &UDPConnContext{
-		lanInterface:  "eth23",
-		interfaceMAC:  srcMAC,
-		internalMAC:   dstMAC,
-		internalAddr:  laddr,
-		externalAddrs: []net.Addr{raddr},
+		lanInterface: "eth23",
+		interfaceMAC: srcMAC,
+		internalMAC:  dstMAC,
+		internalAddr: laddr,
+		remoteAddrs:  []net.Addr{raddr},
 		UDPConn: &UDPConnMock{
 			laddr: &net.UDPAddr{
 				IP:   net.ParseIP("10.0.0.1"),
@@ -520,7 +529,7 @@ func TestSetsReadDeadline(t *testing.T) {
 			toRead: []*UDPConnPacket{},
 		},
 	}
-	router.addUDPConn(laddr, raddr, cont)
+	router.addUDPConn(laddr, eaddr, raddr, cont)
 
 	router.processUDPConnOnce(cont)
 	setReadDeadline := router.connectionsByMapping["10.0.0.2:12344"].UDPConn.(*UDPConnMock).readDeadline
@@ -705,13 +714,17 @@ func TestEvict(t *testing.T) {
 		IP:   net.ParseIP("10.0.0.2"),
 		Port: 12344,
 	}
+	eaddr := &net.UDPAddr{
+		IP:   net.ParseIP("10.0.0.1"),
+		Port: 12344,
+	}
 	raddr := &net.UDPAddr{
 		IP:   net.ParseIP("1.1.1.1"),
 		Port: 1234,
 	}
 	cont := &UDPConnContext{
-		internalAddr:  laddr,
-		externalAddrs: []net.Addr{raddr},
+		internalAddr: laddr,
+		remoteAddrs:  []net.Addr{raddr},
 		UDPConn: &UDPConnMock{
 			laddr: &net.UDPAddr{
 				IP:   net.ParseIP("10.0.0.1"),
@@ -719,12 +732,12 @@ func TestEvict(t *testing.T) {
 			},
 		},
 	}
-	router.addUDPConn(laddr, raddr, cont)
+	router.addUDPConn(laddr, eaddr, raddr, cont)
 
 	if _, found := router.connectionsByMapping["10.0.0.2:12344"]; !found {
 		t.Fatalf("expected to find connection by mapping")
 	}
-	if _, found := router.connectionsByInternalEndpoint["10.0.0.2:12344"]; !found {
+	if _, found := router.connectionsByInternalEndpoint["10.0.0.1:12344"]; !found {
 		t.Fatalf("expected to find connection by internal endpoint")
 	}
 	if cont.UDPConn.(*UDPConnMock).closed {
