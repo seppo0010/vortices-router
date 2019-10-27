@@ -83,11 +83,17 @@ func (service *Service) ReadEchoServer(remoteIP net.IP, remotePort, localPort, t
 	return stdout
 }
 
+type TopologyConfiguration struct {
+	NumberOfLANComputers uint
+	RouterConfig         string
+}
+
 type Topology struct {
 	LAN              *dc.Network
 	Internet         *dc.Network
 	Router           *Service
 	LANComputer      *Service
+	LANComputers     []*Service
 	InternetComputer *Service
 	Compose          *dc.Compose
 	T                *testing.T
@@ -95,7 +101,7 @@ type Topology struct {
 	packets          []*PacketItem
 }
 
-func NewTopology(t *testing.T, config string) *Topology {
+func NewTopology(t *testing.T, topologyConfig *TopologyConfiguration) *Topology {
 	_, filename, _, _ := runtime.Caller(1)
 
 	compose := dc.NewCompose(dc.ComposeConfig{})
@@ -105,8 +111,12 @@ func NewTopology(t *testing.T, config string) *Topology {
 	topology := &Topology{Compose: compose, T: t}
 	topology.LAN = compose.AddNetwork("lan", dc.NetworkConfig{})
 	topology.Internet = compose.AddNetwork("internet", dc.NetworkConfig{})
+	routerConfig := ""
+	if topologyConfig != nil {
+		routerConfig = topologyConfig.RouterConfig
+	}
 	topology.Router = &Service{T: t, Service: compose.AddService("router", dc.ServiceConfig{
-		Command:    []string{"./main", "--wan-alias", "wan", "--lan-alias", "lan", "--config", config},
+		Command:    []string{"./main", "--wan-alias", "wan", "--lan-alias", "lan", "--config", routerConfig},
 		Image:      routerImage,
 		Privileged: true,
 	}, []dc.ServiceNetworkConfig{
@@ -122,6 +132,14 @@ RUN apt update && apt install -y iproute2 netcat-openbsd iputils-ping tcpdump
 	topology.LANComputer = &Service{T: t, Service: compose.AddService("lancomputer", computerConfig, []dc.ServiceNetworkConfig{
 		dc.ServiceNetworkConfig{Network: topology.LAN},
 	})}
+	if topologyConfig != nil && topologyConfig.NumberOfLANComputers > 0 {
+		topology.LANComputers = make([]*Service, topologyConfig.NumberOfLANComputers)
+		for i, _ := range topology.LANComputers {
+			topology.LANComputers[i] = &Service{T: t, Service: compose.AddService(fmt.Sprintf("lancomputer%d", i+1), computerConfig, []dc.ServiceNetworkConfig{
+				dc.ServiceNetworkConfig{Network: topology.LAN},
+			})}
+		}
+	}
 	topology.InternetComputer = &Service{T: t, Service: compose.AddService("internetcomputer", computerConfig, []dc.ServiceNetworkConfig{
 		dc.ServiceNetworkConfig{Network: topology.Internet},
 	})}

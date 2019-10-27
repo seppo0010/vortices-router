@@ -8,7 +8,7 @@ import (
 )
 
 func TestNoRangePreservationPort(t *testing.T) {
-	topology := tests.NewTopology(t, `{"PortAssignment":[3]}`)
+	topology := tests.NewTopology(t, &tests.TopologyConfiguration{RouterConfig: `{"PortAssignment":[3]}`})
 	err := topology.Compose.Start()
 	require.Nil(t, err)
 	defer topology.Compose.Clear()

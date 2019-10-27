@@ -8,7 +8,7 @@ import (
 )
 
 func TestBasic(t *testing.T) {
-	topology := tests.NewTopology(t, "")
+	topology := tests.NewTopology(t, nil)
 	err := topology.Compose.Start()
 	require.Nil(t, err)
 	defer topology.Compose.Clear()

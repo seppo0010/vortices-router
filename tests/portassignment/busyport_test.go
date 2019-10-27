@@ -8,7 +8,7 @@ import (
 )
 
 func TestBusyPortMaintainRange(t *testing.T) {
-	topology := tests.NewTopology(t, "")
+	topology := tests.NewTopology(t, nil)
 	err := topology.Compose.Start()
 	require.Nil(t, err)
 	defer topology.Compose.Clear()
@@ -45,7 +45,7 @@ func TestBusyPortMaintainRange(t *testing.T) {
 }
 
 func TestBusyPortMaintainRange_BusyInRouter(t *testing.T) {
-	topology := tests.NewTopology(t, "")
+	topology := tests.NewTopology(t, &tests.TopologyConfiguration{NumberOfLANComputers: 1})
 	err := topology.Compose.Start()
 	require.Nil(t, err)
 	defer topology.Compose.Clear()
@@ -58,6 +58,7 @@ func TestBusyPortMaintainRange_BusyInRouter(t *testing.T) {
 	lanComputerIPAddress := topology.GetLANComputerIPAddress()
 
 	topology.LANComputer.SetDefaultGateway(routerLANIPAddress.String())
+	topology.LANComputers[0].SetDefaultGateway(routerLANIPAddress.String())
 
 	topology.StartTCPDump()
 
@@ -65,7 +66,7 @@ func TestBusyPortMaintainRange_BusyInRouter(t *testing.T) {
 	defer server.Kill()
 
 	// there's nothing in that dst port, just using this to get src port assigned in the router
-	_ = topology.LANComputer.ReadEchoServer(internetComputerIPAddress, 8001, 12345, 1)
+	_ = topology.LANComputers[0].ReadEchoServer(internetComputerIPAddress, 8001, 12345, 1)
 
 	stdout := topology.LANComputer.ReadEchoServer(internetComputerIPAddress, 8000, 12345, 3)
 	require.Equal(t, string(stdout), "hello\n")
