@@ -263,7 +263,7 @@ func (c *Configuration) SendPortsInRange(min, max, step int, ch chan<- PortCandi
 // on the configuration preferences. A `stop` function is also provided to indicate that a candidate
 // was chosen and no more are needed.
 func (c *Configuration) GetExternalPortForInternalPort(internalPort int, contiguityPreference []int) (<-chan PortCandidate, func()) {
-	stopCh := make(chan bool)
+	stopCh := make(chan bool, 1)
 	stop := func() {
 		stopCh <- true
 	}

@@ -411,3 +411,15 @@ func TestGetExternalPortForInternalPort_NoContiguity(t *testing.T) {
 	}
 	stop()
 }
+
+func TestGetExternalPortForInternalPort_StopLast(t *testing.T) {
+	c := Configuration{PortAssignment: []PortAssignment{PortAssignmentPreservation}}
+	port := 10266
+	candidates, stop := c.GetExternalPortForInternalPort(port, nil)
+	for candidate := range candidates {
+		stop()
+		if candidate.Port != 10266 || candidate.Force != false {
+			t.Errorf("expected port candidate to be %d (%v), got %d (%v)", 10266, false, candidate.Port, candidate.Force)
+		}
+	}
+}
