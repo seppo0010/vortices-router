@@ -249,11 +249,15 @@ func (topology *Topology) Packets() []*PacketItem {
 		}
 		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 		for packet := range packetSource.Packets() {
-			packets.ReplaceOrInsert(&PacketItem{
+			pi := &PacketItem{
 				Packet:    packet,
 				Service:   td.Service.ContainerName,
 				Interface: td.Interface,
-			})
+			}
+			if pi.UDPSrcPort() == 5353 && pi.UDPDstPort() == 5353 {
+				continue
+			}
+			packets.ReplaceOrInsert(pi)
 		}
 	}
 
