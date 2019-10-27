@@ -65,7 +65,6 @@ func (service *Service) StartEchoServerGolang(message string, port, times int) e
 		),
 	),
 	)
-
 }
 
 func (service *Service) StartEchoServer(message string, port, times int) exec.Cmd {
@@ -209,6 +208,11 @@ func (topology *Topology) StartTCPDump() {
 		&tcpdumpConfig{Service: topology.Router, Interface: "eth0"},
 		&tcpdumpConfig{Service: topology.Router, Interface: "eth1"},
 		&tcpdumpConfig{Service: topology.InternetComputer, Interface: "eth0"},
+	}
+	if topology.LANComputers != nil {
+		for _, c := range topology.LANComputers {
+			topology.TCPDumps = append(topology.TCPDumps, &tcpdumpConfig{Service: c, Interface: "eth0"})
+		}
 	}
 	for _, td := range topology.TCPDumps {
 		td.Listener = tcpdump(topology.T, td.Service, td.Interface)
