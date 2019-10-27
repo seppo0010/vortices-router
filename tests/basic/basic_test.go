@@ -9,20 +9,15 @@ import (
 
 func TestBasic(t *testing.T) {
 	topology := tests.NewTopology(t, nil)
-	err := topology.Compose.Start()
+	err := topology.Start()
 	require.Nil(t, err)
 	defer topology.Compose.Clear()
 	defer topology.Compose.Stop()
 	defer topology.PrintDebugIfFailed()
 
 	routerWANIPAddress := topology.GetRouterWANIPAddress()
-	routerLANIPAddress := topology.GetRouterLANIPAddress()
 	internetComputerIPAddress := topology.GetInternetComputerIPAddress()
 	lanComputerIPAddress := topology.GetLANComputerIPAddress()
-
-	topology.LANComputer.SetDefaultGateway(routerLANIPAddress.String())
-
-	topology.StartTCPDump()
 
 	server := topology.InternetComputer.StartEchoServer("hello", 8000, 1)
 	defer server.Kill()

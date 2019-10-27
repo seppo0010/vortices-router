@@ -9,20 +9,15 @@ import (
 
 func TestMappingEndpointIndependentReuse(t *testing.T) {
 	topology := tests.NewTopology(t, &tests.TopologyConfiguration{NumberOfInternetComputers: 1, RouterConfig: `{"MappingType": 0}`})
-	err := topology.Compose.Start()
+	err := topology.Start()
 	require.Nil(t, err)
 	defer topology.Compose.Clear()
 	defer topology.Compose.Stop()
 	defer topology.PrintDebugIfFailed()
 
 	routerWANIPAddress := topology.GetRouterWANIPAddress()
-	routerLANIPAddress := topology.GetRouterLANIPAddress()
 	internetComputerIPAddress := topology.GetInternetComputerIPAddress()
 	internetComputerIPAddress2 := topology.GetInternetComputerIPAddressIndex(0)
-
-	topology.LANComputer.SetDefaultGateway(routerLANIPAddress.String())
-
-	topology.StartTCPDump()
 
 	_ = topology.LANComputer.ReadEchoServer(internetComputerIPAddress, 8000, 12345, 1)
 	_ = topology.LANComputer.ReadEchoServer(internetComputerIPAddress2, 8000, 12345, 1)
@@ -35,19 +30,14 @@ func TestMappingEndpointIndependentReuse(t *testing.T) {
 
 func TestMappingAddressDependentReuse(t *testing.T) {
 	topology := tests.NewTopology(t, &tests.TopologyConfiguration{RouterConfig: `{"MappingType": 1}`})
-	err := topology.Compose.Start()
+	err := topology.Start()
 	require.Nil(t, err)
 	defer topology.Compose.Clear()
 	defer topology.Compose.Stop()
 	defer topology.PrintDebugIfFailed()
 
 	routerWANIPAddress := topology.GetRouterWANIPAddress()
-	routerLANIPAddress := topology.GetRouterLANIPAddress()
 	internetComputerIPAddress := topology.GetInternetComputerIPAddress()
-
-	topology.LANComputer.SetDefaultGateway(routerLANIPAddress.String())
-
-	topology.StartTCPDump()
 
 	_ = topology.LANComputer.ReadEchoServer(internetComputerIPAddress, 8000, 12345, 1)
 	_ = topology.LANComputer.ReadEchoServer(internetComputerIPAddress, 8001, 12345, 1)
@@ -60,20 +50,15 @@ func TestMappingAddressDependentReuse(t *testing.T) {
 
 func TestMappingAddressDependentNoReuse(t *testing.T) {
 	topology := tests.NewTopology(t, &tests.TopologyConfiguration{NumberOfInternetComputers: 1, RouterConfig: `{"MappingType": 1}`})
-	err := topology.Compose.Start()
+	err := topology.Start()
 	require.Nil(t, err)
 	defer topology.Compose.Clear()
 	defer topology.Compose.Stop()
 	defer topology.PrintDebugIfFailed()
 
 	routerWANIPAddress := topology.GetRouterWANIPAddress()
-	routerLANIPAddress := topology.GetRouterLANIPAddress()
 	internetComputerIPAddress := topology.GetInternetComputerIPAddress()
 	internetComputerIPAddress2 := topology.GetInternetComputerIPAddressIndex(0)
-
-	topology.LANComputer.SetDefaultGateway(routerLANIPAddress.String())
-
-	topology.StartTCPDump()
 
 	_ = topology.LANComputer.ReadEchoServer(internetComputerIPAddress, 8000, 12345, 1)
 	_ = topology.LANComputer.ReadEchoServer(internetComputerIPAddress2, 8000, 12345, 1)
@@ -86,19 +71,14 @@ func TestMappingAddressDependentNoReuse(t *testing.T) {
 
 func TestMappingAddressAndPortDependentReuse(t *testing.T) {
 	topology := tests.NewTopology(t, &tests.TopologyConfiguration{RouterConfig: `{"MappingType": 2}`})
-	err := topology.Compose.Start()
+	err := topology.Start()
 	require.Nil(t, err)
 	defer topology.Compose.Clear()
 	defer topology.Compose.Stop()
 	defer topology.PrintDebugIfFailed()
 
 	routerWANIPAddress := topology.GetRouterWANIPAddress()
-	routerLANIPAddress := topology.GetRouterLANIPAddress()
 	internetComputerIPAddress := topology.GetInternetComputerIPAddress()
-
-	topology.LANComputer.SetDefaultGateway(routerLANIPAddress.String())
-
-	topology.StartTCPDump()
 
 	_ = topology.LANComputer.ReadEchoServer(internetComputerIPAddress, 8000, 12345, 1)
 	_ = topology.LANComputer.ReadEchoServer(internetComputerIPAddress, 8000, 12345, 1)
@@ -111,20 +91,15 @@ func TestMappingAddressAndPortDependentReuse(t *testing.T) {
 
 func TestMappingAddressAndPortDependentNoReuse(t *testing.T) {
 	topology := tests.NewTopology(t, &tests.TopologyConfiguration{NumberOfInternetComputers: 1, RouterConfig: `{"MappingType": 2}`})
-	err := topology.Compose.Start()
+	err := topology.Start()
 	require.Nil(t, err)
 	defer topology.Compose.Clear()
 	defer topology.Compose.Stop()
 	defer topology.PrintDebugIfFailed()
 
 	routerWANIPAddress := topology.GetRouterWANIPAddress()
-	routerLANIPAddress := topology.GetRouterLANIPAddress()
 	internetComputerIPAddress := topology.GetInternetComputerIPAddress()
 	internetComputerIPAddress2 := topology.GetInternetComputerIPAddressIndex(0)
-
-	topology.LANComputer.SetDefaultGateway(routerLANIPAddress.String())
-
-	topology.StartTCPDump()
 
 	_ = topology.LANComputer.ReadEchoServer(internetComputerIPAddress, 8000, 12345, 1)
 	_ = topology.LANComputer.ReadEchoServer(internetComputerIPAddress, 8001, 12345, 1)

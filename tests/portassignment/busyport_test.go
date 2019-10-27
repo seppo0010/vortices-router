@@ -10,20 +10,15 @@ import (
 
 func TestBusyPortMaintainRange(t *testing.T) {
 	topology := tests.NewTopology(t, nil)
-	err := topology.Compose.Start()
+	err := topology.Start()
 	require.Nil(t, err)
 	defer topology.Compose.Clear()
 	defer topology.Compose.Stop()
 	defer topology.PrintDebugIfFailed()
 
 	routerWANIPAddress := topology.GetRouterWANIPAddress()
-	routerLANIPAddress := topology.GetRouterLANIPAddress()
 	internetComputerIPAddress := topology.GetInternetComputerIPAddress()
 	lanComputerIPAddress := topology.GetLANComputerIPAddress()
-
-	topology.LANComputer.SetDefaultGateway(routerLANIPAddress.String())
-
-	topology.StartTCPDump()
 
 	server := topology.InternetComputer.StartEchoServer("hello", 8000, 1)
 	defer server.Kill()
@@ -47,21 +42,15 @@ func TestBusyPortMaintainRange(t *testing.T) {
 
 func TestBusyPortMaintainRange_BusyInRouter(t *testing.T) {
 	topology := tests.NewTopology(t, &tests.TopologyConfiguration{NumberOfLANComputers: 1})
-	err := topology.Compose.Start()
+	err := topology.Start()
 	require.Nil(t, err)
 	defer topology.Compose.Clear()
 	defer topology.Compose.Stop()
 	defer topology.PrintDebugIfFailed()
 
 	routerWANIPAddress := topology.GetRouterWANIPAddress()
-	routerLANIPAddress := topology.GetRouterLANIPAddress()
 	internetComputerIPAddress := topology.GetInternetComputerIPAddress()
 	lanComputerIPAddress := topology.GetLANComputerIPAddress()
-
-	topology.LANComputer.SetDefaultGateway(routerLANIPAddress.String())
-	topology.LANComputers[0].SetDefaultGateway(routerLANIPAddress.String())
-
-	topology.StartTCPDump()
 
 	server := topology.InternetComputer.StartEchoServer("hello", 8000, 1)
 	defer server.Kill()
@@ -88,21 +77,15 @@ func TestBusyPort_Overloading(t *testing.T) {
 		NumberOfLANComputers: 1,
 		RouterConfig:         `{"PortAssignment":[1]}`,
 	})
-	err := topology.Compose.Start()
+	err := topology.Start()
 	require.Nil(t, err)
 	defer topology.Compose.Clear()
 	defer topology.Compose.Stop()
 	defer topology.PrintDebugIfFailed()
 
 	routerWANIPAddress := topology.GetRouterWANIPAddress()
-	routerLANIPAddress := topology.GetRouterLANIPAddress()
 	internetComputerIPAddress := topology.GetInternetComputerIPAddress()
 	lanComputerIPAddress := topology.GetLANComputerIPAddress()
-
-	topology.LANComputer.SetDefaultGateway(routerLANIPAddress.String())
-	topology.LANComputers[0].SetDefaultGateway(routerLANIPAddress.String())
-
-	topology.StartTCPDump()
 
 	server := topology.InternetComputer.StartEchoServer("hello", 8000, 1)
 	defer server.Kill()

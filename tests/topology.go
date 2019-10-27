@@ -212,7 +212,21 @@ func tcpdump(t *testing.T, service *Service, iface string) *tcpdumpListener {
 	return l
 }
 
-func (topology *Topology) StartTCPDump() {
+func (topology *Topology) Start() error {
+	err := topology.Compose.Start()
+	if err != nil {
+		return err
+	}
+	routerLANIPAddress := topology.GetRouterLANIPAddress()
+	topology.LANComputer.SetDefaultGateway(routerLANIPAddress.String())
+	for _, c := range topology.LANComputers {
+		c.SetDefaultGateway(routerLANIPAddress.String())
+	}
+	topology.startTCPDump()
+	return nil
+}
+
+func (topology *Topology) startTCPDump() {
 	topology.TCPDumps = []*tcpdumpConfig{
 		&tcpdumpConfig{Service: topology.LANComputer, Interface: "eth0"},
 		&tcpdumpConfig{Service: topology.Router, Interface: "eth0"},
