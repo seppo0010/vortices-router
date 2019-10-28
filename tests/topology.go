@@ -85,6 +85,7 @@ func (service *Service) ReadEchoServer(remoteIP net.IP, remotePort, localPort, t
 type TopologyConfiguration struct {
 	NumberOfLANComputers      uint
 	NumberOfInternetComputers uint
+	NumberOfRouterIPAddresses uint
 	RouterConfig              string
 }
 
@@ -112,18 +113,16 @@ func NewTopology(t *testing.T, topologyConfig *TopologyConfiguration) *Topology 
 	topology := &Topology{Compose: compose, T: t}
 	topology.LAN = compose.AddNetwork("lan", dc.NetworkConfig{})
 	topology.Internet = compose.AddNetwork("internet", dc.NetworkConfig{})
-	routerConfig := ""
-	if topologyConfig != nil {
-		routerConfig = topologyConfig.RouterConfig
-	}
+
 	topology.Router = &Service{T: t, Service: compose.AddService("router", dc.ServiceConfig{
-		Command:    []string{"./main", "--wan-alias", "wan", "--lan-alias", "lan", "--config", routerConfig},
+		Command:    []string{"./main", "--wan-alias", "wan", "--lan-alias", "lan", "--config", topologyConfig.RouterConfig},
 		Image:      routerImage,
 		Privileged: true,
 	}, []dc.ServiceNetworkConfig{
 		dc.ServiceNetworkConfig{Network: topology.LAN, Aliases: []string{"lan"}},
 		dc.ServiceNetworkConfig{Network: topology.Internet, Aliases: []string{"wan"}},
 	})}
+
 	computerImage, err := compose.BuildDocker("computer", `
 FROM ubuntu
 RUN apt update && apt install -y iproute2 netcat-openbsd iputils-ping tcpdump

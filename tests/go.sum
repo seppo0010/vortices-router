@@ -17,6 +17,10 @@ github.com/seppo0010/vortices-dockercompose v0.0.0-20191012140249-fa161207c315 h
 github.com/seppo0010/vortices-dockercompose v0.0.0-20191012140249-fa161207c315/go.mod h1:CVMoJ96gGpaTrsgR+krGiRVE1MkoDf86vzE5ZA6zzVU=
 github.com/seppo0010/vortices-dockercompose v0.0.0-20191012181821-d8a347ad36f9 h1:xtdc/cwAV908HuxvXWzdQpH/3eDk0oF5IHe5GLIp7xs=
 github.com/seppo0010/vortices-dockercompose v0.0.0-20191012181821-d8a347ad36f9/go.mod h1:CVMoJ96gGpaTrsgR+krGiRVE1MkoDf86vzE5ZA6zzVU=
+github.com/seppo0010/vortices-dockercompose v0.0.0-20191027165401-6b368dab52ea h1:Z3IrZ8e95yJ5U1gBvgFRsU+e3oSpWCbIBsUyvU8Z95E=
+github.com/seppo0010/vortices-dockercompose v0.0.0-20191027165401-6b368dab52ea/go.mod h1:CVMoJ96gGpaTrsgR+krGiRVE1MkoDf86vzE5ZA6zzVU=
+github.com/seppo0010/vortices-dockercompose v0.0.0-20191027172621-8aa572e28236 h1:CgPwniu7H2D5sLP5z6x0gMFGZom0nNl2b4xXSVQ4dh8=
+github.com/seppo0010/vortices-dockercompose v0.0.0-20191027172621-8aa572e28236/go.mod h1:CVMoJ96gGpaTrsgR+krGiRVE1MkoDf86vzE5ZA6zzVU=
 github.com/seppo0010/vortices-router v0.0.0-20191013021147-8cff0da5c136 h1:IBnBIcCU6fPp+TzrWy073IRDpTz/ReA3L5d3fYzEOyQ=
 github.com/seppo0010/vortices-router/tests v0.0.0-20191013021147-8cff0da5c136 h1:hPfyPPDL1r6nosYWMkH72ASq+wrf9o+ybTBDxFNekSo=
 github.com/sirupsen/logrus v1.4.2 h1:SPIRibHv4MatM3XXNO2BJeFLZwZ2LvZgfQ5+UNI2im4=
@@ -36,6 +40,8 @@ golang.org/x/sys v0.0.0-20190422165155-953cdadca894 h1:Cz4ceDQGXuKRnVBDTS23GTn/p
 golang.org/x/sys v0.0.0-20190422165155-953cdadca894/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20191010194322-b09406accb47 h1:/XfQ9z7ib8eEJX2hdgFTZJ/ntt0swNk5oYBziWeTCvY=
 golang.org/x/sys v0.0.0-20191010194322-b09406accb47/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+golang.org/x/sys v0.0.0-20191026070338-33540a1f6037 h1:YyJpGZS1sBuBCzLAR1VEpK193GlqGZbnPFnPV/5Rsb4=
+golang.org/x/sys v0.0.0-20191026070338-33540a1f6037/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=

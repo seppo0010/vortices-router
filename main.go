@@ -22,7 +22,7 @@ var errNoWANQueue = errors.New("at least one WAN queue must be provided")
 var errNoLANQueue = errors.New("at least one LAN queue must be provided")
 var lanInterfaceAndQueueMistmachFormat = "the same number of LAN interfaces and queues must be provided, got %d and %d"
 var wanInterfaceAndQueueMistmachFormat = "the same number of WAN interfaces and queues must be provided, got %d and %d"
-var errMixedAlias = errors.New("WAN and LAN alias must both or neither be provided")
+var errMixedAlias = errors.New("WAN and LAN aliases must both have the same number of elements")
 var aliasNotFoundFormat = "alias %s not found"
 
 func init() {
@@ -55,6 +55,17 @@ func (as *addresses) Set(value string) error {
 	return nil
 }
 
+type aliases []string
+
+func (i *aliases) String() string {
+	return strings.Join(*i, ",")
+}
+
+func (i *aliases) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
+
 type interfaces []string
 
 func (i *interfaces) String() string {
@@ -81,33 +92,40 @@ func (i *queues) Set(value string) error {
 	return nil
 }
 
-func findInterfaceForAlias(alias string) (*net.Interface, error) {
-	addrs, err := net.LookupHost(alias)
-	if err != nil {
-		return nil, err
-	}
-	interfaces, err := net.Interfaces()
-	if err != nil {
-		return nil, err
-	}
-	ipToInterface := map[string]net.Interface{}
-	for _, interface_ := range interfaces {
-		addrs, err := interface_.Addrs()
+func findInterfacesForAliases(aliases []string) ([]*net.Interface, error) {
+	ifaces := make([]*net.Interface, len(aliases))
+	for i, alias := range aliases {
+		addrs, err := net.LookupHost(alias)
 		if err != nil {
 			return nil, err
 		}
+		interfaces, err := net.Interfaces()
+		if err != nil {
+			return nil, err
+		}
+		ipToInterface := map[string]net.Interface{}
+		for _, interface_ := range interfaces {
+			addrs, err := interface_.Addrs()
+			if err != nil {
+				return nil, err
+			}
+			for _, addr := range addrs {
+				ip := strings.Split(addr.String(), "/")[0]
+				ipToInterface[ip] = interface_
+			}
+		}
+		ifaces[i] = nil
 		for _, addr := range addrs {
-			ip := strings.Split(addr.String(), "/")[0]
-			ipToInterface[ip] = interface_
+			if interface_, found := ipToInterface[addr]; found {
+				ifaces[i] = &interface_
+				break
+			}
+		}
+		if ifaces[i] == nil {
+			return nil, fmt.Errorf(aliasNotFoundFormat, alias)
 		}
 	}
-	for _, addr := range addrs {
-		if interface_, found := ipToInterface[addr]; found {
-			return &interface_, nil
-		}
-
-	}
-	return nil, fmt.Errorf(aliasNotFoundFormat, alias)
+	return ifaces, nil
 }
 
 func setupForwardAndQueue(wanInterface, lanInterface string, lanQueue int) error {
@@ -126,13 +144,13 @@ func setupForwardAndQueue(wanInterface, lanInterface string, lanQueue int) error
 
 func getInterfacesAndQueues() (interfaces, queues, addresses, interfaces, error) {
 	wanInterfaces := interfaces{}
-	wanAlias := ""
+	wanAliases := aliases{}
 	lanInterfaces := interfaces{}
 	lanQueues := queues{}
 	lanAddresses := addresses{}
-	lanAlias := ""
-	flag.StringVar(&wanAlias, "wan-alias", "", "WAN (wide area network) alias (e.g.: \"wan\"). Must be set along lan-alias.")
-	flag.StringVar(&lanAlias, "lan-alias", "", "LAN (local area network) alias (e.g.: \"lan\"). Must be set along wan-alias.")
+	lanAliases := aliases{}
+	flag.Var(&wanAliases, "wan-alias", "WAN (wide area network) aliases (e.g.: \"wan\"). Must be set along lan-alias.")
+	flag.Var(&lanAliases, "lan-alias", "LAN (local area network) aliases (e.g.: \"lan\"). Must be set along wan-alias.")
 	flag.Var(&wanInterfaces, "wan-interface", "WAN (wide area network) interface (e.g.: \"eth0\"). Required if no alias is provided.")
 	flag.Var(&lanInterfaces, "lan-interface", "LAN (local area network) interface (e.g.: \"eth1\"). Required if no alias is provided.")
 	flag.Var(&lanQueues, "lan-queue", "LAN (local area network) nf queue (e.g.: \"2\"). Required if no alias is provided.")
@@ -143,30 +161,32 @@ func getInterfacesAndQueues() (interfaces, queues, addresses, interfaces, error)
 	}
 	flag.Parse()
 
-	if (wanAlias == "" && lanAlias != "") || (wanAlias != "" && lanAlias == "") {
+	if len(wanAliases) != len(lanAliases) {
 		return nil, nil, nil, nil, errMixedAlias
 	}
 
-	if wanAlias != "" && lanAlias != "" {
-		wanInterface, err := findInterfaceForAlias(wanAlias)
+	if len(wanAliases) != 0 {
+		wanAlisesInterfaces, err := findInterfacesForAliases(wanAliases)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
-		lanInterface, err := findInterfaceForAlias(lanAlias)
+		lanAlisesInterfaces, err := findInterfacesForAliases(lanAliases)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
 		// 34 was randomly selected
 		// well, not really randomly, but randomly enough
-		lanQueue := 34
-		err = setupForwardAndQueue(wanInterface.Name, lanInterface.Name, lanQueue)
-		if err != nil {
-			return nil, nil, nil, nil, err
+		baseLANQueue := 34
+		for i, wanInterface := range wanAlisesInterfaces {
+			err = setupForwardAndQueue(wanInterface.Name, lanAlisesInterfaces[i].Name, baseLANQueue+i)
+			if err != nil {
+				return nil, nil, nil, nil, err
+			}
+			wanInterfaces = append(wanInterfaces, wanInterface.Name)
+			lanInterfaces = append(lanInterfaces, lanAlisesInterfaces[i].Name)
+			lanAddresses = append(lanAddresses, lanAlisesInterfaces[i].HardwareAddr)
+			lanQueues = append(lanQueues, baseLANQueue+i)
 		}
-		wanInterfaces = append(wanInterfaces, wanInterface.Name)
-		lanInterfaces = append(lanInterfaces, lanInterface.Name)
-		lanAddresses = append(lanAddresses, lanInterface.HardwareAddr)
-		lanQueues = append(lanQueues, lanQueue)
 	}
 
 	if len(wanInterfaces) == 0 {
