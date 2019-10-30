@@ -114,8 +114,13 @@ func NewTopology(t *testing.T, topologyConfig *TopologyConfiguration) *Topology 
 	topology.LAN = compose.AddNetwork("lan", dc.NetworkConfig{})
 	topology.Internet = compose.AddNetwork("internet", dc.NetworkConfig{})
 
+	routerConfig := ""
+	if topologyConfig != nil {
+		routerConfig = topologyConfig.RouterConfig
+	}
+
 	topology.Router = &Service{T: t, Service: compose.AddService("router", dc.ServiceConfig{
-		Command:    []string{"./main", "--wan-alias", "wan", "--lan-alias", "lan", "--config", topologyConfig.RouterConfig},
+		Command:    []string{"./main", "--wan-alias", "wan", "--lan-alias", "lan", "--config", routerConfig},
 		Image:      routerImage,
 		Privileged: true,
 	}, []dc.ServiceNetworkConfig{
