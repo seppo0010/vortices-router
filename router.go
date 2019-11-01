@@ -35,7 +35,7 @@ type Router struct {
 	WANInterfaces []string
 
 	// WANIPAddresses contain a list of IPs on each LAN Interface, these might be IPv4 or IPv6
-	WANIPAddresses                [][]net.IP
+	WANIPAddresses                []net.IP
 	connectionsByMapping          map[string]*UDPConnContext
 	connectionsByInternalEndpoint map[string]*UDPConnContext
 	Calls
@@ -78,7 +78,11 @@ func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, lan
 		connectionsByInternalEndpoint: map[string]*UDPConnContext{},
 	}
 	router.WANIPAddresses, err = router.FindLocalIPAddresses()
-	return router, err
+	if err != nil {
+		return nil, err
+	}
+	router.Configuration.IPAddressPooling.SetMax(len(router.WANIPAddresses))
+	return router, nil
 }
 
 func real_callback(queue *nfqueue.Queue, payload *nfqueue.Payload, sourceAddr net.HardwareAddr) int {
@@ -136,25 +140,18 @@ func (r *Router) Run() {
 	wg.Wait()
 }
 
-func (r *Router) wanIPsForLANIP(lanIP net.IP) []net.IP {
-	if len(r.WANIPAddresses) == 1 {
-		return r.WANIPAddresses[0]
-	}
+func (r *Router) wanIPForLANIP(lanIP net.IP) net.IP {
 	return r.WANIPAddresses[r.Configuration.IPAddressPooling.GetIndexForIP(lanIP)]
 }
 
 // FindLocalIPAddresses finds IP addresses in WAN interfaces. Notice that one WAN interface
-// may hold more than one IP address (e.g.: IPv4 and IPv6). The order in `WANInterfaces` is the
-// order used for the IP addresses.
-func (r *Router) FindLocalIPAddresses() ([][]net.IP, error) {
+// may hold more than one IP address (e.g.: IPv4 and IPv6). We'll only keep IPv4 addresses.
+func (r *Router) FindLocalIPAddresses() ([]net.IP, error) {
 	ifaces, err := r.Calls.Interfaces()
 	if err != nil {
 		return nil, err
 	}
-	ipAddresses := make([][]net.IP, len(r.WANInterfaces))
-	for i := range ipAddresses {
-		ipAddresses[i] = nil
-	}
+	ipAddresses := make([]net.IP, 0)
 
 	for _, i := range ifaces {
 		index := func(needle string, haystack []string) int {
@@ -172,7 +169,6 @@ func (r *Router) FindLocalIPAddresses() ([][]net.IP, error) {
 		if err != nil {
 			return nil, err
 		}
-		ips := []net.IP{}
 		for _, addr := range addrs {
 			var ip net.IP
 			switch v := addr.(type) {
@@ -181,9 +177,10 @@ func (r *Router) FindLocalIPAddresses() ([][]net.IP, error) {
 			case *net.IPAddr:
 				ip = v.IP
 			}
-			ips = append(ips, ip)
+			if ip.To4() != nil {
+				ipAddresses = append(ipAddresses, ip)
+			}
 		}
-		ipAddresses[index] = ips
 	}
 	for i, ipAddress := range ipAddresses {
 		if ipAddress == nil || len(ipAddress) == 0 {
@@ -366,7 +363,7 @@ func (r *Router) addUDPConn(laddr, eaddr, raddr net.Addr, udpConn *UDPConnContex
 }
 
 func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC net.HardwareAddr, lanInterface string) (*UDPConnContext, error) {
-	wanIPs := r.wanIPsForLANIP(laddr.IP)
+	wanIP := r.wanIPForLANIP(laddr.IP)
 	contiguityPreference := make([]int, 0, 2)
 	if conn, found := r.connectionsByInternalEndpoint[(&net.UDPAddr{
 		IP:   laddr.IP,
@@ -382,26 +379,23 @@ func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC
 	}
 	portCandidates, stop := r.Configuration.GetExternalPortForInternalPort(laddr.Port, contiguityPreference)
 	for portCandidate := range portCandidates {
-		for _, wanIP := range wanIPs {
-			eaddr := &net.UDPAddr{
-				IP:   wanIP,
-				Port: portCandidate.Port,
-			}
+		eaddr := &net.UDPAddr{
+			IP:   wanIP,
+			Port: portCandidate.Port,
+		}
 
-			if portCandidate.Force {
-				if conn, found := r.connectionsByInternalEndpoint[eaddr.String()]; found {
-					_ = r.evictUDPConn(conn)
-				} else {
-				}
+		if portCandidate.Force {
+			if conn, found := r.connectionsByInternalEndpoint[eaddr.String()]; found {
+				_ = r.evictUDPConn(conn)
 			}
+		}
 
-			udpConn, err := r.Calls.ListenUDP("udp", eaddr)
-			if err == nil {
-				stop()
-				connContext := r.initUDPConn(laddr, eaddr, raddr, internalMAC, interfaceMAC, lanInterface, udpConn)
-				r.addUDPConn(laddr, eaddr, raddr, connContext)
-				return connContext, nil
-			}
+		udpConn, err := r.Calls.ListenUDP("udp", eaddr)
+		if err == nil {
+			stop()
+			connContext := r.initUDPConn(laddr, eaddr, raddr, internalMAC, interfaceMAC, lanInterface, udpConn)
+			r.addUDPConn(laddr, eaddr, raddr, connContext)
+			return connContext, nil
 		}
 	}
 	log.Warnf("no free ports")

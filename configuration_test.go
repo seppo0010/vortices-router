@@ -211,6 +211,7 @@ func TestGetExternalPortForInternalPort_Parity(t *testing.T) {
 				t.Errorf("expected port candidate to be %d (%v), got %d (%v)", 1024, false, candidate.Port, candidate.Force)
 			}
 			stop()
+			break
 		}
 	}
 }
@@ -233,6 +234,7 @@ func TestGetExternalPortForInternalPort_ParityOdd(t *testing.T) {
 			}
 
 			stop()
+			break
 		}
 	}
 }

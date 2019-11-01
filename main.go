@@ -20,10 +20,8 @@ var errNoWANInterface = errors.New("at least one WAN interface must be provided"
 var errNoLANInterface = errors.New("at least one LAN interface must be provided")
 var errNoWANQueue = errors.New("at least one WAN queue must be provided")
 var errNoLANQueue = errors.New("at least one LAN queue must be provided")
-var lanInterfaceAndQueueMistmachFormat = "the same number of LAN interfaces and queues must be provided, got %d and %d"
-var wanInterfaceAndQueueMistmachFormat = "the same number of WAN interfaces and queues must be provided, got %d and %d"
-var errMixedAlias = errors.New("WAN and LAN aliases must both have the same number of elements")
 var aliasNotFoundFormat = "alias %s not found"
+var errExtraIPAddressNoHostFound = errors.New("Could not find an extra IP address in the network")
 
 func init() {
 	var usage bytes.Buffer
@@ -149,20 +147,59 @@ func getInterfacesAndQueues() (interfaces, queues, addresses, interfaces, error)
 	lanQueues := queues{}
 	lanAddresses := addresses{}
 	lanAliases := aliases{}
+	extraIPAddresses := 0
+	extraIPAddressesWANAlias := ""
 	flag.Var(&wanAliases, "wan-alias", "WAN (wide area network) aliases (e.g.: \"wan\"). Must be set along lan-alias.")
 	flag.Var(&lanAliases, "lan-alias", "LAN (local area network) aliases (e.g.: \"lan\"). Must be set along wan-alias.")
 	flag.Var(&wanInterfaces, "wan-interface", "WAN (wide area network) interface (e.g.: \"eth0\"). Required if no alias is provided.")
 	flag.Var(&lanInterfaces, "lan-interface", "LAN (local area network) interface (e.g.: \"eth1\"). Required if no alias is provided.")
 	flag.Var(&lanQueues, "lan-queue", "LAN (local area network) nf queue (e.g.: \"2\"). Required if no alias is provided.")
 	flag.Var(&lanAddresses, "lan-mac-address", "LAN (local area network) mac address (e.g.: \"5e:73:2a:c4:53:81\"). Required if no alias is provided.")
+	flag.IntVar(&extraIPAddresses, "extra-ip-addresses", 0, "number of local ip addresses to use for the internet network. Must be set along extra-ip-addresses-wan-alias.")
+	flag.StringVar(&extraIPAddressesWANAlias, "extra-ip-addresses-wan-alias", "", "WAN (wide area network) alias (e.g.: \"wan\") to attach the IP address to. Must be set along extra-ip-addresses.")
 
 	if len(os.Args) == 2 && (os.Args[1] == "-h" || os.Args[1] == "--help") {
 		return nil, nil, nil, nil, usageError
 	}
 	flag.Parse()
 
-	if len(wanAliases) != len(lanAliases) {
-		return nil, nil, nil, nil, errMixedAlias
+	if extraIPAddresses > 0 && extraIPAddressesWANAlias != "" {
+		wanAlisesInterfaces, err := findInterfacesForAliases([]string{extraIPAddressesWANAlias})
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		wanInterface := wanAlisesInterfaces[0]
+		addrs, err := wanInterface.Addrs()
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		for _, addr := range addrs {
+			cidr := addr.String()
+			ipAndMask := strings.Split(cidr, "/")
+			ip := ipAndMask[0]
+			cidrMask := ipAndMask[1]
+			hosts, stop := Hosts(cidr)
+			defer func() { stop <- nil }()
+			for host := range hosts {
+				if host == ip {
+					continue
+				}
+				_, err := exec.Command("ping", "-c1", "-t1", host).Output()
+				if err != nil {
+					err := exec.Command("ip", "addr", "add", fmt.Sprintf("%v/%v", host, cidrMask), "dev", wanInterface.Name).Run()
+					if err != nil {
+						return nil, nil, nil, nil, err
+					}
+					extraIPAddresses--
+					if extraIPAddresses == 0 {
+						break
+					}
+				}
+			}
+			if extraIPAddresses > 0 {
+				return nil, nil, nil, nil, errExtraIPAddressNoHostFound
+			}
+		}
 	}
 
 	if len(wanAliases) != 0 {
@@ -197,9 +234,6 @@ func getInterfacesAndQueues() (interfaces, queues, addresses, interfaces, error)
 	}
 	if len(lanQueues) == 0 {
 		return nil, nil, nil, nil, errNoLANQueue
-	}
-	if len(lanInterfaces) != len(lanQueues) {
-		return nil, nil, nil, nil, fmt.Errorf(lanInterfaceAndQueueMistmachFormat, len(lanInterfaces), len(lanQueues))
 	}
 	return lanInterfaces, lanQueues, lanAddresses, wanInterfaces, nil
 }

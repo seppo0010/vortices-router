@@ -31,6 +31,7 @@ const (
 // IPAddressPooling determines how to use different outgoing IP addresses. This is not very common.
 type IPAddressPooling interface {
 	GetIndexForIP(ip net.IP) int
+	SetMax(max int)
 }
 
 // IPAddressPoolingPaired will pair any internal IP address to one external IP address and will
@@ -62,6 +63,10 @@ func (p *IPAddressPoolingPaired) GetIndexForIP(ip net.IP) int {
 	return p.last
 }
 
+func (p *IPAddressPoolingPaired) SetMax(max int) {
+	p.max = max
+}
+
 // IPAddressPoolingArbitrary makes no guarantee about the external IP address that will be use
 // for an internal IP address.
 type IPAddressPoolingArbitrary struct {
@@ -76,6 +81,10 @@ func (p *IPAddressPoolingArbitrary) GetIndexForIP(ip net.IP) int {
 		return rand.New(p.randSource).Int() % p.max
 	}
 	return rand.Int() % p.max
+}
+
+func (p *IPAddressPoolingArbitrary) SetMax(max int) {
+	p.max = max
 }
 
 // PortAssignment sets the rules to handle external port assignment.

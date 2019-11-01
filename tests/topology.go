@@ -82,6 +82,31 @@ func (service *Service) ReadEchoServer(remoteIP net.IP, remotePort, localPort, t
 	return stdout
 }
 
+func (service *Service) GetIPAddresses(iface string) []string {
+	cmd := service.Exec("ip", "addr", "show", "dev", iface)
+	stdoutPipe, err := cmd.StdoutPipe()
+	require.Nil(service.T, err)
+	err = cmd.Start()
+	require.Nil(service.T, err)
+	reader := bufio.NewReader(stdoutPipe)
+
+	ips := []string{}
+	for {
+		lineBytes, _, err := reader.ReadLine()
+		if err == io.EOF {
+			break
+		}
+		require.Nil(service.T, err)
+		line := strings.TrimSpace(string(lineBytes))
+		if strings.HasPrefix(line, "inet") {
+			ips = append(ips, strings.SplitN(strings.SplitN(line, " ", 3)[1], "/", 2)[0])
+		}
+	}
+	err = cmd.Wait()
+	require.Nil(service.T, err)
+	return ips
+}
+
 type TopologyConfiguration struct {
 	NumberOfLANComputers      uint
 	NumberOfInternetComputers uint
@@ -115,12 +140,16 @@ func NewTopology(t *testing.T, topologyConfig *TopologyConfiguration) *Topology 
 	topology.Internet = compose.AddNetwork("internet", dc.NetworkConfig{})
 
 	routerConfig := ""
+	extraIPAddresses := "0"
 	if topologyConfig != nil {
 		routerConfig = topologyConfig.RouterConfig
+		if topologyConfig.NumberOfRouterIPAddresses > 1 {
+			extraIPAddresses = fmt.Sprintf("%d", topologyConfig.NumberOfRouterIPAddresses-1)
+		}
 	}
 
 	topology.Router = &Service{T: t, Service: compose.AddService("router", dc.ServiceConfig{
-		Command:    []string{"./main", "--wan-alias", "wan", "--lan-alias", "lan", "--config", routerConfig},
+		Command:    []string{"./main", "--wan-alias", "wan", "--lan-alias", "lan", "--config", routerConfig, "--extra-ip-addresses", extraIPAddresses, "--extra-ip-addresses-wan-alias", "lan", "--extra-ip-addresses-wan-alias", "wan"},
 		Image:      routerImage,
 		Privileged: true,
 	}, []dc.ServiceNetworkConfig{

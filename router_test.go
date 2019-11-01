@@ -86,11 +86,11 @@ func TestFindIPAddresses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
-	if ipAddresses == nil || len(ipAddresses) == 0 || ipAddresses[0] == nil || len(ipAddresses[0]) == 0 {
+	if ipAddresses == nil || len(ipAddresses) == 0 {
 		t.Fatalf("expected to have at least one ip address in local interface")
 	}
 
-	for _, ip := range ipAddresses[0] {
+	for _, ip := range ipAddresses {
 		if !ip.IsLoopback() {
 			t.Fatalf("found not loopback ip address in local interface")
 		}
@@ -101,7 +101,7 @@ func TestConnCreation(t *testing.T) {
 	configuration := DefaultConfiguration(1)
 	myIP := net.ParseIP("10.0.0.1")
 	router := &Router{
-		WANIPAddresses:                [][]net.IP{[]net.IP{myIP}},
+		WANIPAddresses:                []net.IP{myIP},
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
@@ -146,7 +146,7 @@ func TestForwardUDPPacket(t *testing.T) {
 	configuration := DefaultConfiguration(1)
 	myIP := net.ParseIP("10.0.0.1")
 	router := &Router{
-		WANIPAddresses:                [][]net.IP{[]net.IP{myIP}},
+		WANIPAddresses:                []net.IP{myIP},
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
@@ -221,7 +221,7 @@ func TestForwardWANUDPPacket(t *testing.T) {
 	configuration := DefaultConfiguration(1)
 	myIP := net.ParseIP("10.0.0.1")
 	router := &Router{
-		WANIPAddresses:                [][]net.IP{[]net.IP{myIP}},
+		WANIPAddresses:                []net.IP{myIP},
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
@@ -274,7 +274,7 @@ func TestConnCreationContiguity(t *testing.T) {
 	configuration := DefaultConfiguration(1)
 	myIP := net.ParseIP("10.0.0.1")
 	router := &Router{
-		WANIPAddresses:       [][]net.IP{[]net.IP{myIP}},
+		WANIPAddresses:       []net.IP{myIP},
 		WANInterfaces:        []string{"lo"},
 		Configuration:        configuration,
 		connectionsByMapping: map[string]*UDPConnContext{},
@@ -324,7 +324,7 @@ func testFilterWithCalls(t *testing.T, configuration *Configuration, forward boo
 
 	myIP := net.ParseIP("10.0.0.1")
 	router := &Router{
-		WANIPAddresses:                [][]net.IP{[]net.IP{myIP}},
+		WANIPAddresses:                []net.IP{myIP},
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
@@ -432,7 +432,7 @@ func TestWriteUpdatesLastWrite(t *testing.T) {
 	lastOutbound := time.Date(2019, time.January, 3, 4, 5, 6, 7, time.UTC)
 	myIP := net.ParseIP("10.0.0.1")
 	router := &Router{
-		WANIPAddresses:                [][]net.IP{[]net.IP{myIP}},
+		WANIPAddresses:                []net.IP{myIP},
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
@@ -492,7 +492,7 @@ func TestSetsReadDeadline(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	myIP := net.ParseIP("10.0.0.1")
 	router := &Router{
-		WANIPAddresses:                [][]net.IP{[]net.IP{myIP}},
+		WANIPAddresses:                []net.IP{myIP},
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
@@ -701,7 +701,7 @@ func TestEvict(t *testing.T) {
 	configuration := DefaultConfiguration(1)
 	myIP := net.ParseIP("10.0.0.1")
 	router := &Router{
-		WANIPAddresses:                [][]net.IP{[]net.IP{myIP}},
+		WANIPAddresses:                []net.IP{myIP},
 		WANInterfaces:                 []string{"lo"},
 		Configuration:                 configuration,
 		connectionsByMapping:          map[string]*UDPConnContext{},
