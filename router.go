@@ -81,7 +81,7 @@ func NewRouter(conf *Configuration, lanInterfaces []string, lanQueues []int, lan
 	if err != nil {
 		return nil, err
 	}
-	router.Configuration.IPAddressPooling.SetMax(len(router.WANIPAddresses))
+	router.Configuration.IPAddressPooling.length = len(router.WANIPAddresses)
 	return router, nil
 }
 
@@ -140,8 +140,8 @@ func (r *Router) Run() {
 	wg.Wait()
 }
 
-func (r *Router) wanIPForLANIP(lanIP net.IP) net.IP {
-	return r.WANIPAddresses[r.Configuration.IPAddressPooling.GetIndexForIP(lanIP)]
+func (r *Router) wanIPForLANEndpoint(lanIP net.IP, port int) net.IP {
+	return r.WANIPAddresses[r.Configuration.IPAddressPooling.GetIndexForEndpoint(lanIP, port)]
 }
 
 // FindLocalIPAddresses finds IP addresses in WAN interfaces. Notice that one WAN interface
@@ -363,7 +363,7 @@ func (r *Router) addUDPConn(laddr, eaddr, raddr net.Addr, udpConn *UDPConnContex
 }
 
 func (r *Router) udpNewConn(laddr, raddr *net.UDPAddr, internalMAC, interfaceMAC net.HardwareAddr, lanInterface string) (*UDPConnContext, error) {
-	wanIP := r.wanIPForLANIP(laddr.IP)
+	wanIP := r.wanIPForLANEndpoint(laddr.IP, laddr.Port)
 	contiguityPreference := make([]int, 0, 2)
 	if conn, found := r.connectionsByInternalEndpoint[(&net.UDPAddr{
 		IP:   laddr.IP,

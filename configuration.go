@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net"
@@ -28,63 +29,99 @@ const (
 	MappingTypeAddressAndPortDependent
 )
 
-// IPAddressPooling determines how to use different outgoing IP addresses. This is not very common.
-type IPAddressPooling interface {
-	GetIndexForIP(ip net.IP) int
-	SetMax(max int)
+// IPAddressPoolingI determines how to use different outgoing IP addresses. This is not very common.
+type IPAddressPoolingI interface {
+	GetIndexForEndpoint(ip net.IP, port, length int) int
+}
+
+type IPAddressPooling struct {
+	IPAddressPoolingI
+	length int
+}
+
+func NewIPAddressPoolingPaired(length int) *IPAddressPooling {
+	return &IPAddressPooling{
+		IPAddressPoolingI: &IPAddressPoolingPaired{
+			last:  -1,
+			pairs: map[string]int{},
+		},
+		length: length,
+	}
+}
+
+func NewIPAddressPoolingArbitrary(length int, seed int64) *IPAddressPooling {
+	return &IPAddressPooling{
+		IPAddressPoolingI: &IPAddressPoolingArbitrary{
+			randSource: &lockedSource{src: rand.New(rand.NewSource(seed))},
+			pairs:      map[string]int{},
+		},
+		length: length,
+	}
+}
+
+func (p *IPAddressPooling) GetIndexForEndpoint(ip net.IP, port int) int {
+	return p.IPAddressPoolingI.GetIndexForEndpoint(ip, port, p.length)
+}
+
+func (p *IPAddressPooling) UnmarshalJSON(data []byte) error {
+	var val interface{}
+	err := json.Unmarshal(data, &val)
+	if err != nil {
+		return err
+	}
+	if dict, ok := val.(map[string]interface{}); ok {
+		if seedVal, found := dict["seed"]; found {
+			if seed, ok := seedVal.(float64); ok {
+				p.IPAddressPoolingI = &IPAddressPoolingArbitrary{
+					randSource: &lockedSource{src: rand.New(rand.NewSource(int64(seed)))},
+					pairs:      map[string]int{},
+				}
+				return nil
+			} else {
+				return fmt.Errorf("expected seed to be a number, got %T", seed)
+			}
+		}
+	}
+	return json.Unmarshal(data, &p.IPAddressPoolingI)
 }
 
 // IPAddressPoolingPaired will pair any internal IP address to one external IP address and will
 // always use the same one.
 type IPAddressPoolingPaired struct {
-	max   int
 	last  int
 	pairs map[string]int
 }
 
-// NewIPAddressPoolingPaired creates an IPAddressPoolingPaired with `max` IP addresses
-func NewIPAddressPoolingPaired(max int) *IPAddressPoolingPaired {
-	return &IPAddressPoolingPaired{
-		last:  -1,
-		max:   max,
-		pairs: map[string]int{},
-	}
-}
-
-// GetIndexForIP gets the WAN IP address index to user for a LAN IP address. The same LAN IP
-// address will always return the same index.
-func (p *IPAddressPoolingPaired) GetIndexForIP(ip net.IP) int {
+func (p *IPAddressPoolingPaired) GetIndexForEndpoint(ip net.IP, port, length int) int {
 	ipString := ip.String()
 	if val, found := p.pairs[ipString]; found {
 		return val
 	}
-	p.last = (p.last + 1) % p.max
+	p.last = (p.last + 1) % length
 	p.pairs[ipString] = p.last
 	return p.last
-}
-
-func (p *IPAddressPoolingPaired) SetMax(max int) {
-	p.max = max
 }
 
 // IPAddressPoolingArbitrary makes no guarantee about the external IP address that will be use
 // for an internal IP address.
 type IPAddressPoolingArbitrary struct {
-	max        int
 	randSource *lockedSource
+	pairs      map[string]int
 }
 
-// GetIndexForIP gets the WAN IP address index to user for a LAN IP address. The index is always
-// random.
-func (p *IPAddressPoolingArbitrary) GetIndexForIP(ip net.IP) int {
-	if p.randSource != nil {
-		return rand.New(p.randSource).Intn(p.max + 1)
+func (p *IPAddressPoolingArbitrary) GetIndexForEndpoint(ip net.IP, port, length int) int {
+	key := fmt.Sprintf("%s:%d", ip.String(), port)
+	if val, found := p.pairs[key]; found {
+		return val
 	}
-	return rand.Intn(p.max + 1)
-}
-
-func (p *IPAddressPoolingArbitrary) SetMax(max int) {
-	p.max = max
+	var val int
+	if p.randSource != nil {
+		val = rand.New(p.randSource).Intn(length)
+	} else {
+		val = rand.Intn(length)
+	}
+	p.pairs[key] = val
+	return val
 }
 
 // PortAssignment sets the rules to handle external port assignment.
@@ -177,7 +214,7 @@ func (f FilteringAddressAndPortDependent) ShouldAccept(raddr net.Addr, knownRadd
 // Configuration a router configuration.
 type Configuration struct {
 	MappingType      MappingType
-	IPAddressPooling IPAddressPooling
+	IPAddressPooling *IPAddressPooling
 	// PortAssignment is a list of rules to select a port that will be executed in order if the
 	// previous one were not able to find a port.
 	PortAssignment          []PortAssignment
@@ -193,7 +230,7 @@ type Configuration struct {
 // NewConfiguration creates a Configuration
 func NewConfiguration(
 	mappingType MappingType,
-	ipAddressPooling IPAddressPooling,
+	ipAddressPooling *IPAddressPooling,
 	portAssignment []PortAssignment,
 	portPreservationParity bool,
 	portContiguity bool,
