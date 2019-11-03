@@ -71,16 +71,16 @@ func (p *IPAddressPoolingPaired) SetMax(max int) {
 // for an internal IP address.
 type IPAddressPoolingArbitrary struct {
 	max        int
-	randSource rand.Source
+	randSource *lockedSource
 }
 
 // GetIndexForIP gets the WAN IP address index to user for a LAN IP address. The index is always
 // random.
 func (p *IPAddressPoolingArbitrary) GetIndexForIP(ip net.IP) int {
 	if p.randSource != nil {
-		return rand.New(p.randSource).Int() % p.max
+		return rand.New(p.randSource).Intn(p.max + 1)
 	}
-	return rand.Int() % p.max
+	return rand.Intn(p.max + 1)
 }
 
 func (p *IPAddressPoolingArbitrary) SetMax(max int) {
