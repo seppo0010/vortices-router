@@ -19,7 +19,7 @@ func TestIPAddressPoolingPaired(t *testing.T) {
 
 	// new IPs should round robin
 	for i, ip := range ips {
-		index := pool.GetIndexForIP(ip)
+		index := pool.GetIndexForEndpoint(ip, 1)
 		if index != i%numIPAddresses {
 			t.Errorf("expected index %d for ip %s, got %d", i, ip.String(), index)
 		}
@@ -27,14 +27,14 @@ func TestIPAddressPoolingPaired(t *testing.T) {
 
 	// existing IPs should maintain their index
 	for i, ip := range ips {
-		index := pool.GetIndexForIP(ip)
+		index := pool.GetIndexForEndpoint(ip, 1)
 		if index != i%numIPAddresses {
 			t.Errorf("expected index %d for ip %s, got %d", i, ip.String(), index)
 		}
 	}
 
 	// trying a new one just in case reads messed it up
-	index := pool.GetIndexForIP(lastIP)
+	index := pool.GetIndexForEndpoint(lastIP, 1)
 	if index != len(ips)%numIPAddresses {
 		t.Errorf("expected index %d for ip %s, got %d", len(ips), lastIP.String(), index)
 	}
